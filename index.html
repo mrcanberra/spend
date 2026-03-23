@@ -672,26 +672,21 @@ html, body {
     <div class="sheet-handle"></div>
     <div class="sheet-title">Settings</div>
 
-    <!-- Telegram Sync -->
+    <!-- Cloudflare Sync -->
     <div style="padding:10px 16px 8px;border-bottom:1px solid #222;">
       <div style="font-size:10px;color:#444;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:8px;">Sync</div>
       <div style="margin-bottom:8px;">
-        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px;">Telegram Bot Token</label>
-        <input type="text" class="sheet-input" id="tg-token-input" placeholder="123456:ABCdef..." style="font-size:11px;" oninput="saveTgConfig()">
-      </div>
-      <div style="margin-bottom:8px;">
-        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px;">Chat ID</label>
-        <input type="text" class="sheet-input" id="tg-chatid-input" placeholder="123456789" style="font-size:11px;" oninput="saveTgConfig()">
+        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px;">API Key</label>
+        <input type="password" class="sheet-input" id="cf-apikey-input" placeholder="Enter your API key" style="font-size:11px;" oninput="saveCfConfig()">
       </div>
       <div style="display:flex;gap:8px;margin-top:4px;">
-        <div class="sheet-btn" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgSyncNow()">☁ Push</div>
-        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgPullNow()">↓ Pull</div>
-        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgTestConnection()">🔍 Test</div>
+        <div class="sheet-btn" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="cfSyncNow()">☁ Push</div>
+        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="cfPullNow()">↓ Pull</div>
+        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="cfTestConnection()">🔍 Test</div>
       </div>
-      <div id="tg-status" style="font-size:10px;color:#555;margin-top:6px;text-align:center;"></div>
+      <div id="cf-status" style="font-size:10px;color:#555;margin-top:6px;text-align:center;"></div>
       <div style="font-size:9px;color:#2a2a2a;margin-top:6px;line-height:1.6;">
-        Data stored as a document in your private bot chat.<br>
-        <a href="https://t.me/BotFather" style="color:#6bc5ff;">Get token from @BotFather</a>
+        Data synced via Cloudflare KV. Enter your API key once per device.
       </div>
     </div>
 
@@ -776,8 +771,8 @@ function save() {
   localStorage.setItem('st_txns',     JSON.stringify(txns));
   localStorage.setItem('st_archive',  JSON.stringify(archived));
   localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
-  // Auto-push to Telegram in background after every save
-  setTimeout(autoSync, 300);
+  // Auto-push to Cloudflare in background after every save
+  setTimeout(cfPush, 300);
 }
 
 // ══ POINTS CALC ══
@@ -2968,6 +2963,8 @@ document.addEventListener('touchmove', e=>{
 
 // ══ SETTINGS ══
 function openSettingsSheet() {
+  const el = document.getElementById('cf-apikey-input');
+  if (el && cfApiKey) el.value = cfApiKey;
   openSheet('settings-sheet');
 }
 
@@ -3077,26 +3074,25 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
   reader.readAsText(file);
 }
 
-// ══ TELEGRAM SYNC ══
-const TG_TOKEN_KEY  = 'st_tg_token';
-const TG_CHATID_KEY = 'st_tg_chatid';
-const TG_MSGID_KEY  = 'st_tg_msgid';   // message_id of the last uploaded doc
-const TG_TSYNC_KEY  = 'st_tg_tsync';   // ISO timestamp of last successful sync
-const PENDING_SYNC_KEY = 'st_tg_pending'; // flag: local changes not yet pushed
+// ══ CLOUDFLARE SYNC ══
+const CF_WORKER_URL  = 'https://spend-tracker-sync.fangjw.workers.dev';
+const CF_TSYNC_KEY   = 'st_cf_tsync';
+const CF_PENDING_KEY = 'st_cf_pending';
+const CF_APIKEY_KEY  = 'st_cf_apikey';
 
-let tgToken  = localStorage.getItem(TG_TOKEN_KEY)  || '';
-let tgChatId = localStorage.getItem(TG_CHATID_KEY) || '';
-let tgMsgId  = localStorage.getItem(TG_MSGID_KEY)  || '';
-let tgPendingSync = localStorage.getItem(PENDING_SYNC_KEY) === '1';
+let cfApiKey      = localStorage.getItem(CF_APIKEY_KEY) || '';
+let cfPendingSync = localStorage.getItem(CF_PENDING_KEY) === '1';
 
-function saveTgConfig() {
-  tgToken  = document.getElementById('tg-token-input').value.trim();
-  tgChatId = document.getElementById('tg-chatid-input').value.trim();
-  localStorage.setItem(TG_TOKEN_KEY,  tgToken);
-  localStorage.setItem(TG_CHATID_KEY, tgChatId);
+function cfConfigured() { return !!cfApiKey; }
+function saveCfConfig() {
+  cfApiKey = document.getElementById('cf-apikey-input').value.trim();
+  localStorage.setItem(CF_APIKEY_KEY, cfApiKey);
 }
 
-function tgConfigured() { return tgToken && tgChatId; }
+function setCfStatus(msg, color) {
+  const el = document.getElementById('cf-status');
+  if (el) { el.textContent = msg; el.style.color = color || '#888'; }
+}
 
 function setSyncIndicator(state) {
   const el     = document.getElementById('sync-indicator');
@@ -3113,7 +3109,6 @@ function setSyncIndicator(state) {
   el.textContent      = s.text;
   el.style.color      = s.color;
   el.style.background = s.bg;
-  // Update sync time
   if (timeEl) {
     if (state === 'synced') {
       const now = new Date();
@@ -3124,297 +3119,150 @@ function setSyncIndicator(state) {
   }
 }
 
-function setTgStatus(msg, color) {
-  const el = document.getElementById('tg-status');
-  if (el) { el.textContent = msg; el.style.color = color || '#888'; }
-}
-
-// ── Build the full data payload ──
 function buildSyncPayload() {
-  return {
-    savedAt: new Date().toISOString(),
-    version: 2,
-    cards, txns, archived, bonusDue,
-  };
+  return { savedAt: new Date().toISOString(), version: 3, cards, txns, archived, bonusDue };
 }
 
-// ── Push data as text messages to Telegram (avoids CORS file download issues) ──
-// Data is JSON → base64 → split into 3800-char chunks → sent as messages
-// Last chunk message is pinned for easy retrieval
-async function tgPush() {
-  if (!tgConfigured()) return false;
+function markPendingSync() {
+  cfPendingSync = true;
+  localStorage.setItem(CF_PENDING_KEY, '1');
+  setSyncIndicator('pending');
+}
 
-  // Safety guard: check if cloud has newer data than our last sync
-  // If yes, we must pull first before pushing (like Git push requires pull first)
-  const localSyncTs = localStorage.getItem(TG_TSYNC_KEY) || '';
-  if (localSyncTs && tgConfigured()) {
-    try {
-      const chatRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
-      const chatData = await chatRes.json();
-      if (chatData.ok) {
-        const pinned = chatData.result.pinned_message;
-        if (pinned && pinned.text && pinned.text.startsWith('SPEND_SYNC:')) {
-          const parts    = pinned.text.split(':');
-          const cloudTs  = parts[2] + ':' + parts[3] + ':' + parts[4];
-          if (cloudTs > localSyncTs) {
-            // Cloud is newer than our last sync — must pull first
-            setTgStatus('⚠ Cloud has newer data — Pull first, then Push', '#f0c040');
-            setSyncIndicator('pending');
-            return false;
-          }
-        }
-      }
-    } catch(e) {
-      // Can't check cloud — proceed with push anyway (offline case)
-      console.warn('Pre-push cloud check failed:', e);
-    }
-  }
-
+// ── Push to Cloudflare KV ──
+async function cfPush() {
+  if (!cfConfigured()) { setSyncIndicator('none'); return false; }
   setSyncIndicator('syncing');
   try {
-    const payload  = buildSyncPayload();
-    const json     = JSON.stringify(payload);
-    const b64      = btoa(unescape(encodeURIComponent(json)));
-    const chunkSz  = 3800;
-    const chunks   = [];
-    for (let i = 0; i < b64.length; i += chunkSz) chunks.push(b64.slice(i, i + chunkSz));
-
-    const total    = chunks.length;
-    const ts       = payload.savedAt;
-    let   lastMsgId = null;
-
-    for (let i = 0; i < chunks.length; i++) {
-      const text = `SPEND_SYNC:${i+1}of${total}:${ts}:${chunks[i]}`;
-      const res  = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: tgChatId, text, disable_notification: true })
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.description || 'Send failed');
-      lastMsgId = String(data.result.message_id);
+    // Safety: check if cloud has newer data before pushing
+    const localTs = localStorage.getItem(CF_TSYNC_KEY) || '';
+    if (localTs) {
+      const checkRes  = await fetch(CF_WORKER_URL, { headers: { 'X-Api-Key': cfApiKey } });
+      if (checkRes.ok) {
+        const cloudData = await checkRes.json();
+        if (cloudData && cloudData.savedAt && cloudData.savedAt > localTs) {
+          setCfStatus('⚠ Cloud has newer data — Pull first, then Push', '#f0c040');
+          setSyncIndicator('pending');
+          return false;
+        }
+      }
     }
 
-    // Pin the LAST chunk message — pull will detect total and fetch all chunks
-    await fetch(`https://api.telegram.org/bot${tgToken}/pinChatMessage`, {
+    const payload = buildSyncPayload();
+    const res = await fetch(CF_WORKER_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: tgChatId, message_id: lastMsgId, disable_notification: true })
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': cfApiKey },
+      body: JSON.stringify(payload),
     });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
 
-    tgMsgId = lastMsgId;
-    localStorage.setItem(TG_MSGID_KEY, tgMsgId);
-    localStorage.setItem(TG_TSYNC_KEY, ts);
-    localStorage.removeItem(PENDING_SYNC_KEY);
-    tgPendingSync = false;
+    localStorage.setItem(CF_TSYNC_KEY, payload.savedAt);
+    localStorage.removeItem(CF_PENDING_KEY);
+    cfPendingSync = false;
     setSyncIndicator('synced');
-    setTgStatus('Synced ' + new Date().toLocaleTimeString(), '#27ae60');
+    setCfStatus('Synced ' + new Date().toLocaleTimeString(), '#27ae60');
     return true;
   } catch(e) {
-    console.warn('TG push failed:', e);
-    setTgStatus('Push error: ' + e.message, '#ff6b6b');
+    console.warn('CF push failed:', e);
+    setCfStatus('Push error: ' + e.message, '#ff6b6b');
     markPendingSync();
     return false;
   }
 }
 
-// ── Pull data from Telegram via pinned message ──
-// Reads pinned message to find the last chunk, then fetches all preceding chunks
-// All via getChat + getMessage — no file downloads, no CORS issues
-async function tgPull() {
-  if (!tgConfigured()) return null;
+// ── Pull from Cloudflare KV ──
+async function cfPull(force) {
+  if (!cfConfigured()) return null;
   try {
-    // Get pinned message
-    const chatRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
-    const chatData = await chatRes.json();
-    if (!chatData.ok) throw new Error(chatData.description);
+    const res = await fetch(CF_WORKER_URL, { headers: { 'X-Api-Key': cfApiKey } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const remote = await res.json();
+    if (!remote || !remote.savedAt) return null;
 
-    const pinned = chatData.result.pinned_message;
-    if (!pinned || !pinned.text) return null;
-    if (!pinned.text.startsWith('SPEND_SYNC:')) return null;
+    const localTs = localStorage.getItem(CF_TSYNC_KEY) || '';
+    if (!force && remote.savedAt <= localTs) return null; // already up to date
 
-    // Parse: SPEND_SYNC:NofTotal:timestamp:data
-    const parts    = pinned.text.split(':');
-    const chunkInfo = parts[1]; // e.g. "3of3"
-    const ts       = parts[2] + ':' + parts[3] + ':' + parts[4]; // ISO timestamp has colons
-    const total    = parseInt(chunkInfo.split('of')[1]);
-    const current  = parseInt(chunkInfo.split('of')[0]);
-
-    // Check if remote is newer than our last sync
-    const localTs = localStorage.getItem(TG_TSYNC_KEY) || '';
-    if (localTs && ts <= localTs) return null;
-
-    // If only 1 chunk, we already have all data in pinned message
-    if (total === 1) {
-      const b64  = parts.slice(5).join(':');
-      const json = decodeURIComponent(escape(atob(b64)));
-      return { data: JSON.parse(json), ts };
-    }
-
-    // Multiple chunks — fetch messages from pinned-id backwards
-    // The pinned message is the LAST chunk. Previous chunks are consecutive message_ids before it.
-    const pinnedMsgId = pinned.message_id;
-    let b64 = '';
-    const chunkData = new Array(total);
-
-    // Store last chunk
-    chunkData[current - 1] = parts.slice(5).join(':');
-
-    // Fetch remaining chunks — they were sent just before the pinned message
-    for (let i = 0; i < total - 1; i++) {
-      const msgId = pinnedMsgId - (total - 1 - i);
-      const fwdRes = await fetch(`https://api.telegram.org/bot${tgToken}/forwardMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: tgChatId, from_chat_id: tgChatId, message_id: msgId, disable_notification: true })
-      });
-      const fwdData = await fwdRes.json();
-      if (!fwdData.ok) throw new Error('Failed to fetch chunk ' + (i+1));
-      const fwdText  = fwdData.result.text || '';
-      const fwdParts = fwdText.split(':');
-      const fwdChunk = parseInt(fwdParts[1].split('of')[0]);
-      chunkData[fwdChunk - 1] = fwdParts.slice(5).join(':');
-    }
-
-    b64 = chunkData.join('');
-    const json = decodeURIComponent(escape(atob(b64)));
-    return { data: JSON.parse(json), ts };
-
+    return remote;
   } catch(e) {
-    console.warn('TG pull failed:', e);
-    setTgStatus('Pull error: ' + e.message, '#ff6b6b');
+    console.warn('CF pull failed:', e);
+    setCfStatus('Pull error: ' + e.message, '#ff6b6b');
     return null;
   }
 }
 
-// ── Merge remote data into local (last-write-wins by savedAt) ──
-function mergeRemote(remote) {
-  const localTs  = localStorage.getItem(TG_TSYNC_KEY) || '';
-  const remoteTs = remote.ts;
-  if (remoteTs <= localTs) return false; // local is same or newer
-
-  // Remote is newer — apply it (timestamp already verified above)
-  cards    = Array.isArray(remote.data.cards)    ? remote.data.cards    : cards;
-  txns     = Array.isArray(remote.data.txns)     ? remote.data.txns     : txns;
-  archived = Array.isArray(remote.data.archived) ? remote.data.archived : archived;
-  bonusDue = Array.isArray(remote.data.bonusDue) ? remote.data.bonusDue : bonusDue;
-  localStorage.setItem(TG_TSYNC_KEY, remoteTs);
+// ── Apply remote data safely ──
+function applyRemote(remote) {
+  if (!remote) return false;
+  cards    = Array.isArray(remote.cards)    ? remote.cards    : cards;
+  txns     = Array.isArray(remote.txns)     ? remote.txns     : txns;
+  archived = Array.isArray(remote.archived) ? remote.archived : archived;
+  bonusDue = Array.isArray(remote.bonusDue) ? remote.bonusDue : bonusDue;
+  localStorage.setItem(CF_TSYNC_KEY, remote.savedAt);
   save();
   return true;
 }
 
-function markPendingSync() {
-  tgPendingSync = true;
-  localStorage.setItem(PENDING_SYNC_KEY, '1');
-  setSyncIndicator('pending');
-}
-
 // ── Public: sync now (push) ──
-async function tgTestConnection() {
-  if (!tgConfigured()) { setTgStatus('Enter token and chat ID first.', '#ff6b6b'); return; }
-  setTgStatus('Testing...', '#6bc5ff');
-  try {
-    // Test 1: validate token
-    const meRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getMe`);
-    const meData = await meRes.json();
-    if (!meData.ok) { setTgStatus('❌ Bad token: ' + meData.description, '#ff6b6b'); return; }
-
-    // Test 2: validate chat ID
-    const chatRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
-    const chatData = await chatRes.json();
-    if (!chatData.ok) { setTgStatus('❌ Bad chat ID: ' + chatData.description, '#ff6b6b'); return; }
-
-    const pinned  = chatData.result.pinned_message;
-    const botName = meData.result.username;
-    if (pinned && pinned.text && pinned.text.startsWith('SPEND_SYNC:')) {
-      const parts = pinned.text.split(':');
-      const ts = (parts[2] + ':' + parts[3] + ':' + parts[4]).slice(0,19).replace('T',' ');
-      setTgStatus(`✓ @${botName} connected · Last sync: ${ts}`, '#27ae60');
-    } else if (pinned && (pinned.caption || '').startsWith('sync:')) {
-      setTgStatus(`✓ @${botName} · Old format detected — tap Push to upgrade`, '#f0c040');
-    } else {
-      setTgStatus(`✓ @${botName} connected · No sync data yet — tap Push first`, '#f0c040');
-    }
-  } catch(e) {
-    setTgStatus('❌ Error: ' + e.message, '#ff6b6b');
-  }
-}
-
-async function tgSyncNow() {
-  if (!tgConfigured()) {
-    setTgStatus('Enter bot token and chat ID first.', '#ff6b6b');
-    return;
-  }
-  setTgStatus('Uploading...', '#6bc5ff');
-  const ok = await tgPush();
-  if (!ok) setTgStatus('Upload failed — check token/chat ID', '#ff6b6b');
+async function cfSyncNow() {
+  setCfStatus('Uploading...', '#6bc5ff');
+  await cfPush();
 }
 
 // ── Public: pull from cloud ──
-async function tgPullNow() {
-  if (!tgConfigured()) {
-    setTgStatus('Enter bot token and chat ID first.', '#ff6b6b');
-    return;
-  }
-  setTgStatus('Fetching from cloud...', '#6bc5ff');
-  // Force pull — temporarily clear local timestamp so we always fetch
-  const savedTs = localStorage.getItem(TG_TSYNC_KEY);
-  localStorage.removeItem(TG_TSYNC_KEY);
-  const remote = await tgPull();
-  if (!remote) {
-    // Restore timestamp
-    if (savedTs) localStorage.setItem(TG_TSYNC_KEY, savedTs);
-    return;
-  }
-  // Force merge regardless of timestamp comparison
-  cards    = Array.isArray(remote.data.cards)    ? remote.data.cards    : cards;
-  txns     = Array.isArray(remote.data.txns)     ? remote.data.txns     : txns;
-  archived = Array.isArray(remote.data.archived) ? remote.data.archived : archived;
-  bonusDue = Array.isArray(remote.data.bonusDue) ? remote.data.bonusDue : bonusDue;
-  localStorage.setItem(TG_TSYNC_KEY, remote.ts);
-  save();
+async function cfPullNow() {
+  setCfStatus('Fetching from cloud...', '#6bc5ff');
+  const remote = await cfPull(true); // force pull
+  if (!remote) { setCfStatus('Nothing to pull or error.', '#888'); return; }
+  applyRemote(remote);
   runMigrations();
   render();
-  setTgStatus('Pulled ✓ ' + new Date().toLocaleTimeString(), '#27ae60');
   setSyncIndicator('synced');
+  setCfStatus('Pulled ✓ ' + new Date().toLocaleTimeString(), '#27ae60');
 }
 
-// ── Auto-sync: push after every save, retry if offline ──
-async function autoSync() {
-  if (!tgConfigured()) { setSyncIndicator('none'); return; }
-  if (navigator.onLine === false) { setSyncIndicator('offline'); return; }
-  await tgPush();
-}
-
-// ── On connectivity restored, push pending changes ──
-window.addEventListener('online', async () => {
-  if (tgPendingSync && tgConfigured()) {
-    setTgStatus('Back online — syncing...', '#6bc5ff');
-    await tgPush();
-  }
-});
-window.addEventListener('offline', () => {
-  setSyncIndicator('offline');
-});
-
-// ── Background sync: pull on tab focus + every 60s ──
-async function bgPull() {
-  if (!tgConfigured() || navigator.onLine === false) return;
+// ── Test connection ──
+async function cfTestConnection() {
+  if (!cfConfigured()) { setCfStatus('Enter your API key first.', '#ff6b6b'); return; }
+  setCfStatus('Testing...', '#6bc5ff');
   try {
-    const remote = await tgPull();
-    if (remote) {
-      const merged = mergeRemote(remote); // uses safety guards
-      if (merged) {
-        runMigrations();
-        render();
-        setSyncIndicator('synced');
-      }
+    const res  = await fetch(CF_WORKER_URL, { headers: { 'X-Api-Key': cfApiKey } });
+    if (res.status === 401) { setCfStatus('❌ Wrong API key', '#ff6b6b'); return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.savedAt) {
+      const ts = data.savedAt.slice(0,19).replace('T',' ');
+      setCfStatus('✓ Connected · Last sync: ' + ts, '#27ae60');
+    } else {
+      setCfStatus('✓ Connected · No data yet — tap Push first', '#f0c040');
     }
   } catch(e) {
-    // Never crash or wipe data on bgPull error — just log silently
+    setCfStatus('❌ Error: ' + e.message, '#ff6b6b');
+  }
+}
+
+// ── Background sync ──
+async function bgPull() {
+  if (navigator.onLine === false) return;
+  try {
+    const remote = await cfPull(false);
+    if (remote) {
+      applyRemote(remote);
+      runMigrations();
+      render();
+      setSyncIndicator('synced');
+    }
+  } catch(e) {
     console.warn('bgPull error (ignored):', e);
   }
 }
+
+window.addEventListener('online', async () => {
+  if (cfPendingSync) {
+    setCfStatus('Back online — syncing...', '#6bc5ff');
+    await cfPush();
+  }
+});
+window.addEventListener('offline', () => { setSyncIndicator('offline'); });
 
 // Option A: pull when app comes back into focus
 document.addEventListener('visibilitychange', () => {
@@ -3506,23 +3354,19 @@ function runMigrations() {
 render();
 fetchFxRates(); // fetch live FX rates on load
 
-// ── Initial pull from Telegram on load (background, non-blocking) ──
+// ── Initial pull from Cloudflare on load (background, non-blocking) ──
 (async () => {
-  if (!tgConfigured()) { setSyncIndicator('none'); return; }
+  if (!cfConfigured()) { setSyncIndicator('none'); return; }
   setSyncIndicator('syncing');
-  const remote = await tgPull();
+  const remote = await cfPull(false);
   if (remote) {
-    const merged = mergeRemote(remote);
-    if (merged) { runMigrations(); render(); }
+    applyRemote(remote);
+    runMigrations();
+    render();
   }
-  setSyncIndicator(tgPendingSync ? 'pending' : 'synced');
-  // If there were pending changes, push them now
-  if (tgPendingSync) await tgPush();
-  // Pre-fill settings inputs
-  const ti = document.getElementById('tg-token-input');
-  const ci = document.getElementById('tg-chatid-input');
-  if (ti && tgToken)  ti.value  = tgToken;
-  if (ci && tgChatId) ci.value = tgChatId;
+  setSyncIndicator(cfPendingSync ? 'pending' : 'synced');
+  // If there were pending changes from offline use, push them now
+  if (cfPendingSync) await cfPush();
 })();
 </script>
 </body>
