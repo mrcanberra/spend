@@ -771,8 +771,9 @@ function save() {
   localStorage.setItem('st_txns',     JSON.stringify(txns));
   localStorage.setItem('st_archive',  JSON.stringify(archived));
   localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
+  lastLocalSave = Date.now();
   // Auto-push to Cloudflare in background after every save
-  setTimeout(cfPush, 300);
+  setTimeout(cfPush, 500);
 }
 
 // ══ POINTS CALC ══
@@ -3080,8 +3081,10 @@ const CF_TSYNC_KEY   = 'st_cf_tsync';
 const CF_PENDING_KEY = 'st_cf_pending';
 const CF_APIKEY_KEY  = 'st_cf_apikey';
 
-let cfApiKey      = localStorage.getItem(CF_APIKEY_KEY) || '';
-let cfPendingSync = localStorage.getItem(CF_PENDING_KEY) === '1';
+let cfApiKey        = localStorage.getItem(CF_APIKEY_KEY) || '';
+let cfPendingSync   = localStorage.getItem(CF_PENDING_KEY) === '1';
+let cfPushing       = false;   // true while a push is in flight
+let lastLocalSave   = Date.now(); // timestamp of last local save
 
 function cfConfigured() { return !!cfApiKey; }
 function saveCfConfig() {
@@ -3132,6 +3135,8 @@ function markPendingSync() {
 // ── Push to Cloudflare KV ──
 async function cfPush() {
   if (!cfConfigured()) { setSyncIndicator('none'); return false; }
+  if (cfPushing) return false; // already pushing, skip
+  cfPushing = true;
   setSyncIndicator('syncing');
   try {
     // Safety: check if cloud has newer data before pushing
@@ -3159,12 +3164,14 @@ async function cfPush() {
     localStorage.setItem(CF_TSYNC_KEY, payload.savedAt);
     localStorage.removeItem(CF_PENDING_KEY);
     cfPendingSync = false;
+    cfPushing = false;
     setSyncIndicator('synced');
     setCfStatus('Synced ' + new Date().toLocaleTimeString(), '#27ae60');
     return true;
   } catch(e) {
     console.warn('CF push failed:', e);
     setCfStatus('Push error: ' + e.message, '#ff6b6b');
+    cfPushing = false;
     markPendingSync();
     return false;
   }
@@ -3198,7 +3205,11 @@ function applyRemote(remote) {
   archived = Array.isArray(remote.archived) ? remote.archived : archived;
   bonusDue = Array.isArray(remote.bonusDue) ? remote.bonusDue : bonusDue;
   localStorage.setItem(CF_TSYNC_KEY, remote.savedAt);
-  save();
+  // Write to localStorage directly — do NOT call save() as that would trigger another push
+  localStorage.setItem('st_cards',    JSON.stringify(cards));
+  localStorage.setItem('st_txns',     JSON.stringify(txns));
+  localStorage.setItem('st_archive',  JSON.stringify(archived));
+  localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
   return true;
 }
 
@@ -3243,14 +3254,15 @@ async function cfTestConnection() {
 // ── Background sync ──
 async function bgPull() {
   if (navigator.onLine === false) return;
+  if (cfPushing) return; // push in progress — skip pull
+  if (Date.now() - lastLocalSave < 3000) return; // local save < 3s ago — wait for push
   try {
     const remote = await cfPull(false);
-    if (remote) {
-      applyRemote(remote);
-      runMigrations();
-      render();
-      setSyncIndicator('synced');
-    }
+    if (!remote) return;
+    applyRemote(remote);
+    runMigrations();
+    render();
+    setSyncIndicator('synced');
   } catch(e) {
     console.warn('bgPull error (ignored):', e);
   }
