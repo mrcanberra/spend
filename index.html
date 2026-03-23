@@ -3357,6 +3357,35 @@ window.addEventListener('offline', () => {
   setSyncIndicator('offline');
 });
 
+// ── Background sync: pull on tab focus + every 60s ──
+async function bgPull() {
+  if (!tgConfigured() || navigator.onLine === false) return;
+  const remote = await tgPull();
+  if (remote) {
+    const localTs  = localStorage.getItem(TG_TSYNC_KEY) || '';
+    if (remote.ts > localTs) {
+      cards    = Array.isArray(remote.data.cards)    ? remote.data.cards    : cards;
+      txns     = Array.isArray(remote.data.txns)     ? remote.data.txns     : txns;
+      archived = Array.isArray(remote.data.archived) ? remote.data.archived : archived;
+      bonusDue = Array.isArray(remote.data.bonusDue) ? remote.data.bonusDue : bonusDue;
+      localStorage.setItem(TG_TSYNC_KEY, remote.ts);
+      save();
+      runMigrations();
+      render();
+      setSyncIndicator('synced');
+      setTgStatus('Updated ' + new Date().toLocaleTimeString(), '#27ae60');
+    }
+  }
+}
+
+// Option A: pull when app comes back into focus
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') bgPull();
+});
+
+// Option B: pull every 60 seconds
+setInterval(bgPull, 60000);
+
 // ══ INIT ══
 // Migration: patch any saved card that is missing fields added after initial save
 // This fixes cards saved before bonusDelayed/bonusRound etc were introduced
