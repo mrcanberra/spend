@@ -3144,10 +3144,18 @@ async function tgPush() {
 
     if (!data.ok) throw new Error(data.description || 'Upload failed');
 
-    // Save message_id so we can reference it later
+    // Pin the message so all devices can find it via getChat
     tgMsgId = String(data.result.message_id);
     localStorage.setItem(TG_MSGID_KEY, tgMsgId);
     localStorage.setItem(TG_TSYNC_KEY, payload.savedAt);
+
+    // Pin silently (disable_notification=true, no pin notification in chat)
+    await fetch(`https://api.telegram.org/bot${tgToken}/pinChatMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: tgChatId, message_id: tgMsgId, disable_notification: true })
+    });
+
     localStorage.removeItem(PENDING_SYNC_KEY);
     tgPendingSync = false;
     setSyncIndicator('synced');
@@ -3160,33 +3168,29 @@ async function tgPush() {
   }
 }
 
-// ── Pull latest document from Telegram ──
+// ── Pull latest document from Telegram via pinned message ──
+// The pinned message is always the latest sync doc — works across all devices
+// without consuming the getUpdates queue.
 async function tgPull() {
   if (!tgConfigured()) return null;
   try {
-    // Get last 10 messages from the chat, find latest sync doc
-    const res  = await fetch(`https://api.telegram.org/bot${tgToken}/getUpdates?limit=100&allowed_updates=["message"]`);
+    // Get chat info — pinned_message contains the latest sync doc
+    const res  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.description);
 
-    // Find the most recent message with a document captioned "sync:..."
-    const syncMsgs = (data.result || [])
-      .filter(u => u.message && u.message.document && (u.message.caption || '').startsWith('sync:'))
-      .sort((a, b) => b.message.date - a.message.date);
+    const pinned = data.result.pinned_message;
+    if (!pinned || !pinned.document) return null;
+    if (!(pinned.caption || '').startsWith('sync:')) return null;
 
-    if (!syncMsgs.length) return null;
-
-    const latest  = syncMsgs[0].message;
-    const fileId  = latest.document.file_id;
-    const caption = latest.caption; // "sync:2026-03-23T..."
-    const remoteTs = caption.replace('sync:', '');
+    const remoteTs = pinned.caption.replace('sync:', '');
 
     // Check if remote is newer than our last sync
     const localTs = localStorage.getItem(TG_TSYNC_KEY) || '';
     if (localTs && remoteTs <= localTs) return null; // already up to date
 
     // Download the file
-    const fileRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getFile?file_id=${fileId}`);
+    const fileRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getFile?file_id=${pinned.document.file_id}`);
     const fileData = await fileRes.json();
     if (!fileData.ok) throw new Error('getFile failed');
 
