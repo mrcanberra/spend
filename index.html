@@ -681,8 +681,9 @@ html, body {
         <input type="text" class="sheet-input" id="tg-chatid-input" placeholder="123456789" style="font-size:11px;" oninput="saveTgConfig()">
       </div>
       <div style="display:flex;gap:8px;margin-top:4px;">
-        <div class="sheet-btn" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgSyncNow()">☁ Sync Now</div>
-        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgPullNow()">↓ Pull from Cloud</div>
+        <div class="sheet-btn" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgSyncNow()">☁ Push</div>
+        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgPullNow()">↓ Pull</div>
+        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="tgTestConnection()">🔍 Test</div>
       </div>
       <div id="tg-status" style="font-size:10px;color:#555;margin-top:6px;text-align:center;"></div>
       <div style="font-size:9px;color:#2a2a2a;margin-top:6px;line-height:1.6;">
@@ -3163,6 +3164,7 @@ async function tgPush() {
     return true;
   } catch(e) {
     console.warn('TG push failed:', e);
+    setTgStatus('Push error: ' + e.message, '#ff6b6b');
     markPendingSync();
     return false;
   }
@@ -3201,6 +3203,7 @@ async function tgPull() {
     return { data: remote, ts: remoteTs };
   } catch(e) {
     console.warn('TG pull failed:', e);
+    setTgStatus('Pull error: ' + e.message, '#ff6b6b');
     return null;
   }
 }
@@ -3228,6 +3231,33 @@ function markPendingSync() {
 }
 
 // ── Public: sync now (push) ──
+async function tgTestConnection() {
+  if (!tgConfigured()) { setTgStatus('Enter token and chat ID first.', '#ff6b6b'); return; }
+  setTgStatus('Testing...', '#6bc5ff');
+  try {
+    // Test 1: validate token
+    const meRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getMe`);
+    const meData = await meRes.json();
+    if (!meData.ok) { setTgStatus('❌ Bad token: ' + meData.description, '#ff6b6b'); return; }
+
+    // Test 2: validate chat ID
+    const chatRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
+    const chatData = await chatRes.json();
+    if (!chatData.ok) { setTgStatus('❌ Bad chat ID: ' + chatData.description, '#ff6b6b'); return; }
+
+    const pinned = chatData.result.pinned_message;
+    const botName = meData.result.username;
+    if (pinned) {
+      const ts = (pinned.caption || '').replace('sync:', '').slice(0,19).replace('T',' ');
+      setTgStatus(`✓ @${botName} connected · Last sync: ${ts}`, '#27ae60');
+    } else {
+      setTgStatus(`✓ @${botName} connected · No sync data yet — tap Push first`, '#f0c040');
+    }
+  } catch(e) {
+    setTgStatus('❌ Error: ' + e.message, '#ff6b6b');
+  }
+}
+
 async function tgSyncNow() {
   if (!tgConfigured()) {
     setTgStatus('Enter bot token and chat ID first.', '#ff6b6b');
@@ -3245,21 +3275,26 @@ async function tgPullNow() {
     return;
   }
   setTgStatus('Fetching from cloud...', '#6bc5ff');
+  // Force pull — temporarily clear local timestamp so we always fetch
+  const savedTs = localStorage.getItem(TG_TSYNC_KEY);
+  localStorage.removeItem(TG_TSYNC_KEY);
   const remote = await tgPull();
   if (!remote) {
-    setTgStatus('Already up to date.', '#888');
+    // Restore timestamp
+    if (savedTs) localStorage.setItem(TG_TSYNC_KEY, savedTs);
     return;
   }
-  const merged = mergeRemote(remote);
-  if (merged) {
-    runMigrations();
-    render();
-    setTgStatus('Pulled and merged remote data ✓', '#27ae60');
-    setSyncIndicator('synced');
-  } else {
-    setTgStatus('Local data is already newest.', '#888');
-    setSyncIndicator('synced');
-  }
+  // Force merge regardless of timestamp comparison
+  cards    = Array.isArray(remote.data.cards)    ? remote.data.cards    : cards;
+  txns     = Array.isArray(remote.data.txns)     ? remote.data.txns     : txns;
+  archived = Array.isArray(remote.data.archived) ? remote.data.archived : archived;
+  bonusDue = Array.isArray(remote.data.bonusDue) ? remote.data.bonusDue : bonusDue;
+  localStorage.setItem(TG_TSYNC_KEY, remote.ts);
+  save();
+  runMigrations();
+  render();
+  setTgStatus('Pulled ✓ ' + new Date().toLocaleTimeString(), '#27ae60');
+  setSyncIndicator('synced');
 }
 
 // ── Auto-sync: push after every save, retry if offline ──
