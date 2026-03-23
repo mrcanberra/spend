@@ -306,7 +306,10 @@ html, body {
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:6px;">
       <h1>💳 Spend</h1>
-      <span id="sync-indicator" title="Sync status" style="font-size:9px;padding:2px 6px;border-radius:8px;background:#1a1a1a;color:#555;cursor:pointer;white-space:nowrap;" onclick="openSettingsSheet()">⚙ sync</span>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;cursor:pointer;" onclick="openSettingsSheet()">
+        <span id="sync-indicator" style="font-size:9px;padding:2px 6px;border-radius:8px;background:#1a1a1a;color:#555;white-space:nowrap;">⚙ sync</span>
+        <span id="sync-time" style="font-size:8px;color:#333;white-space:nowrap;padding-right:2px;"></span>
+      </div>
     </div>
     <div class="topbar-right">
       <span class="archive-link" onclick="showArchive()">Archive</span>
@@ -3096,7 +3099,8 @@ function saveTgConfig() {
 function tgConfigured() { return tgToken && tgChatId; }
 
 function setSyncIndicator(state) {
-  const el = document.getElementById('sync-indicator');
+  const el     = document.getElementById('sync-indicator');
+  const timeEl = document.getElementById('sync-time');
   if (!el) return;
   const states = {
     synced:  { text: '● synced',  color: '#27ae60', bg: '#0a1f0f' },
@@ -3106,9 +3110,18 @@ function setSyncIndicator(state) {
     none:    { text: '⚙ sync',    color: '#555',    bg: '#1a1a1a' },
   };
   const s = states[state] || states.none;
-  el.textContent       = s.text;
-  el.style.color       = s.color;
-  el.style.background  = s.bg;
+  el.textContent      = s.text;
+  el.style.color      = s.color;
+  el.style.background = s.bg;
+  // Update sync time
+  if (timeEl) {
+    if (state === 'synced') {
+      const now = new Date();
+      timeEl.textContent = now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+    } else if (state === 'none') {
+      timeEl.textContent = '';
+    }
+  }
 }
 
 function setTgStatus(msg, color) {
@@ -3130,6 +3143,33 @@ function buildSyncPayload() {
 // Last chunk message is pinned for easy retrieval
 async function tgPush() {
   if (!tgConfigured()) return false;
+
+  // Safety guard: check if cloud has newer data than our last sync
+  // If yes, we must pull first before pushing (like Git push requires pull first)
+  const localSyncTs = localStorage.getItem(TG_TSYNC_KEY) || '';
+  if (localSyncTs && tgConfigured()) {
+    try {
+      const chatRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
+      const chatData = await chatRes.json();
+      if (chatData.ok) {
+        const pinned = chatData.result.pinned_message;
+        if (pinned && pinned.text && pinned.text.startsWith('SPEND_SYNC:')) {
+          const parts    = pinned.text.split(':');
+          const cloudTs  = parts[2] + ':' + parts[3] + ':' + parts[4];
+          if (cloudTs > localSyncTs) {
+            // Cloud is newer than our last sync — must pull first
+            setTgStatus('⚠ Cloud has newer data — Pull first, then Push', '#f0c040');
+            setSyncIndicator('pending');
+            return false;
+          }
+        }
+      }
+    } catch(e) {
+      // Can't check cloud — proceed with push anyway (offline case)
+      console.warn('Pre-push cloud check failed:', e);
+    }
+  }
+
   setSyncIndicator('syncing');
   try {
     const payload  = buildSyncPayload();
@@ -3253,7 +3293,7 @@ function mergeRemote(remote) {
   const remoteTs = remote.ts;
   if (remoteTs <= localTs) return false; // local is same or newer
 
-  // Remote is newer — apply it
+  // Remote is newer — apply it (timestamp already verified above)
   cards    = Array.isArray(remote.data.cards)    ? remote.data.cards    : cards;
   txns     = Array.isArray(remote.data.txns)     ? remote.data.txns     : txns;
   archived = Array.isArray(remote.data.archived) ? remote.data.archived : archived;
@@ -3360,21 +3400,19 @@ window.addEventListener('offline', () => {
 // ── Background sync: pull on tab focus + every 60s ──
 async function bgPull() {
   if (!tgConfigured() || navigator.onLine === false) return;
-  const remote = await tgPull();
-  if (remote) {
-    const localTs  = localStorage.getItem(TG_TSYNC_KEY) || '';
-    if (remote.ts > localTs) {
-      cards    = Array.isArray(remote.data.cards)    ? remote.data.cards    : cards;
-      txns     = Array.isArray(remote.data.txns)     ? remote.data.txns     : txns;
-      archived = Array.isArray(remote.data.archived) ? remote.data.archived : archived;
-      bonusDue = Array.isArray(remote.data.bonusDue) ? remote.data.bonusDue : bonusDue;
-      localStorage.setItem(TG_TSYNC_KEY, remote.ts);
-      save();
-      runMigrations();
-      render();
-      setSyncIndicator('synced');
-      setTgStatus('Updated ' + new Date().toLocaleTimeString(), '#27ae60');
+  try {
+    const remote = await tgPull();
+    if (remote) {
+      const merged = mergeRemote(remote); // uses safety guards
+      if (merged) {
+        runMigrations();
+        render();
+        setSyncIndicator('synced');
+      }
     }
+  } catch(e) {
+    // Never crash or wipe data on bgPull error — just log silently
+    console.warn('bgPull error (ignored):', e);
   }
 }
 
