@@ -3125,38 +3125,46 @@ function buildSyncPayload() {
   };
 }
 
-// ── Upload data as a document to Telegram ──
+// ── Push data as text messages to Telegram (avoids CORS file download issues) ──
+// Data is JSON → base64 → split into 3800-char chunks → sent as messages
+// Last chunk message is pinned for easy retrieval
 async function tgPush() {
   if (!tgConfigured()) return false;
   setSyncIndicator('syncing');
   try {
-    const payload = buildSyncPayload();
-    const json    = JSON.stringify(payload, null, 2);
-    const blob    = new Blob([json], { type: 'application/json' });
-    const file    = new File([blob], 'spend-tracker-sync.json', { type: 'application/json' });
+    const payload  = buildSyncPayload();
+    const json     = JSON.stringify(payload);
+    const b64      = btoa(unescape(encodeURIComponent(json)));
+    const chunkSz  = 3800;
+    const chunks   = [];
+    for (let i = 0; i < b64.length; i += chunkSz) chunks.push(b64.slice(i, i + chunkSz));
 
-    const fd = new FormData();
-    fd.append('chat_id',  tgChatId);
-    fd.append('document', file);
-    fd.append('caption',  'sync:' + payload.savedAt);
+    const total    = chunks.length;
+    const ts       = payload.savedAt;
+    let   lastMsgId = null;
 
-    const res  = await fetch(`https://api.telegram.org/bot${tgToken}/sendDocument`, { method:'POST', body:fd });
-    const data = await res.json();
+    for (let i = 0; i < chunks.length; i++) {
+      const text = `SPEND_SYNC:${i+1}of${total}:${ts}:${chunks[i]}`;
+      const res  = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: tgChatId, text, disable_notification: true })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.description || 'Send failed');
+      lastMsgId = String(data.result.message_id);
+    }
 
-    if (!data.ok) throw new Error(data.description || 'Upload failed');
-
-    // Pin the message so all devices can find it via getChat
-    tgMsgId = String(data.result.message_id);
-    localStorage.setItem(TG_MSGID_KEY, tgMsgId);
-    localStorage.setItem(TG_TSYNC_KEY, payload.savedAt);
-
-    // Pin silently (disable_notification=true, no pin notification in chat)
+    // Pin the LAST chunk message — pull will detect total and fetch all chunks
     await fetch(`https://api.telegram.org/bot${tgToken}/pinChatMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: tgChatId, message_id: tgMsgId, disable_notification: true })
+      body: JSON.stringify({ chat_id: tgChatId, message_id: lastMsgId, disable_notification: true })
     });
 
+    tgMsgId = lastMsgId;
+    localStorage.setItem(TG_MSGID_KEY, tgMsgId);
+    localStorage.setItem(TG_TSYNC_KEY, ts);
     localStorage.removeItem(PENDING_SYNC_KEY);
     tgPendingSync = false;
     setSyncIndicator('synced');
@@ -3170,37 +3178,68 @@ async function tgPush() {
   }
 }
 
-// ── Pull latest document from Telegram via pinned message ──
-// The pinned message is always the latest sync doc — works across all devices
-// without consuming the getUpdates queue.
+// ── Pull data from Telegram via pinned message ──
+// Reads pinned message to find the last chunk, then fetches all preceding chunks
+// All via getChat + getMessage — no file downloads, no CORS issues
 async function tgPull() {
   if (!tgConfigured()) return null;
   try {
-    // Get chat info — pinned_message contains the latest sync doc
-    const res  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.description);
+    // Get pinned message
+    const chatRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getChat?chat_id=${tgChatId}`);
+    const chatData = await chatRes.json();
+    if (!chatData.ok) throw new Error(chatData.description);
 
-    const pinned = data.result.pinned_message;
-    if (!pinned || !pinned.document) return null;
-    if (!(pinned.caption || '').startsWith('sync:')) return null;
+    const pinned = chatData.result.pinned_message;
+    if (!pinned || !pinned.text) return null;
+    if (!pinned.text.startsWith('SPEND_SYNC:')) return null;
 
-    const remoteTs = pinned.caption.replace('sync:', '');
+    // Parse: SPEND_SYNC:NofTotal:timestamp:data
+    const parts    = pinned.text.split(':');
+    const chunkInfo = parts[1]; // e.g. "3of3"
+    const ts       = parts[2] + ':' + parts[3] + ':' + parts[4]; // ISO timestamp has colons
+    const total    = parseInt(chunkInfo.split('of')[1]);
+    const current  = parseInt(chunkInfo.split('of')[0]);
 
     // Check if remote is newer than our last sync
     const localTs = localStorage.getItem(TG_TSYNC_KEY) || '';
-    if (localTs && remoteTs <= localTs) return null; // already up to date
+    if (localTs && ts <= localTs) return null;
 
-    // Download the file
-    const fileRes  = await fetch(`https://api.telegram.org/bot${tgToken}/getFile?file_id=${pinned.document.file_id}`);
-    const fileData = await fileRes.json();
-    if (!fileData.ok) throw new Error('getFile failed');
+    // If only 1 chunk, we already have all data in pinned message
+    if (total === 1) {
+      const b64  = parts.slice(5).join(':');
+      const json = decodeURIComponent(escape(atob(b64)));
+      return { data: JSON.parse(json), ts };
+    }
 
-    const filePath = fileData.result.file_path;
-    const dlRes    = await fetch(`https://api.telegram.org/file/bot${tgToken}/${filePath}`);
-    const remote   = await dlRes.json();
+    // Multiple chunks — fetch messages from pinned-id backwards
+    // The pinned message is the LAST chunk. Previous chunks are consecutive message_ids before it.
+    const pinnedMsgId = pinned.message_id;
+    let b64 = '';
+    const chunkData = new Array(total);
 
-    return { data: remote, ts: remoteTs };
+    // Store last chunk
+    chunkData[current - 1] = parts.slice(5).join(':');
+
+    // Fetch remaining chunks — they were sent just before the pinned message
+    for (let i = 0; i < total - 1; i++) {
+      const msgId = pinnedMsgId - (total - 1 - i);
+      const fwdRes = await fetch(`https://api.telegram.org/bot${tgToken}/forwardMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: tgChatId, from_chat_id: tgChatId, message_id: msgId, disable_notification: true })
+      });
+      const fwdData = await fwdRes.json();
+      if (!fwdData.ok) throw new Error('Failed to fetch chunk ' + (i+1));
+      const fwdText  = fwdData.result.text || '';
+      const fwdParts = fwdText.split(':');
+      const fwdChunk = parseInt(fwdParts[1].split('of')[0]);
+      chunkData[fwdChunk - 1] = fwdParts.slice(5).join(':');
+    }
+
+    b64 = chunkData.join('');
+    const json = decodeURIComponent(escape(atob(b64)));
+    return { data: JSON.parse(json), ts };
+
   } catch(e) {
     console.warn('TG pull failed:', e);
     setTgStatus('Pull error: ' + e.message, '#ff6b6b');
@@ -3245,11 +3284,14 @@ async function tgTestConnection() {
     const chatData = await chatRes.json();
     if (!chatData.ok) { setTgStatus('❌ Bad chat ID: ' + chatData.description, '#ff6b6b'); return; }
 
-    const pinned = chatData.result.pinned_message;
+    const pinned  = chatData.result.pinned_message;
     const botName = meData.result.username;
-    if (pinned) {
-      const ts = (pinned.caption || '').replace('sync:', '').slice(0,19).replace('T',' ');
+    if (pinned && pinned.text && pinned.text.startsWith('SPEND_SYNC:')) {
+      const parts = pinned.text.split(':');
+      const ts = (parts[2] + ':' + parts[3] + ':' + parts[4]).slice(0,19).replace('T',' ');
       setTgStatus(`✓ @${botName} connected · Last sync: ${ts}`, '#27ae60');
+    } else if (pinned && (pinned.caption || '').startsWith('sync:')) {
+      setTgStatus(`✓ @${botName} · Old format detected — tap Push to upgrade`, '#f0c040');
     } else {
       setTgStatus(`✓ @${botName} connected · No sync data yet — tap Push first`, '#f0c040');
     }
