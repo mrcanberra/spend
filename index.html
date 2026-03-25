@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -672,22 +673,24 @@ html, body {
     <div class="sheet-handle"></div>
     <div class="sheet-title">Settings</div>
 
-    <!-- Cloudflare Sync -->
+    <!-- Firebase Sync -->
     <div style="padding:10px 16px 8px;border-bottom:1px solid #222;">
       <div style="font-size:10px;color:#444;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:8px;">Sync</div>
-      <div style="margin-bottom:8px;">
-        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px;">API Key</label>
-        <input type="password" class="sheet-input" id="cf-apikey-input" placeholder="Enter your API key" style="font-size:11px;" oninput="saveCfConfig()">
+      <div id="fb-signed-out" style="display:block;">
+        <div class="sheet-btn" style="margin:0;font-size:12px;padding:12px;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="fbSignIn()">
+          <span style="font-size:14px;">G</span> Sign in with Google
+        </div>
+        <div style="font-size:9px;color:#2a2a2a;margin-top:8px;line-height:1.6;text-align:center;">
+          Sign in to enable real-time sync across all devices.
+        </div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:4px;">
-        <div class="sheet-btn" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="cfSyncNow()">☁ Push</div>
-        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="cfPullNow()">↓ Pull</div>
-        <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="cfTestConnection()">🔍 Test</div>
+      <div id="fb-signed-in" style="display:none;">
+        <div id="fb-user-info" style="font-size:11px;color:#888;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:8px;">
+          <div class="sheet-btn-ghost" style="flex:1;margin:0;font-size:12px;padding:10px;" onclick="fbSignOut()">Sign Out</div>
+        </div>
       </div>
-      <div id="cf-status" style="font-size:10px;color:#555;margin-top:6px;text-align:center;"></div>
-      <div style="font-size:9px;color:#2a2a2a;margin-top:6px;line-height:1.6;">
-        Data synced via Cloudflare KV. Enter your API key once per device.
-      </div>
+      <div id="fb-status" style="font-size:10px;color:#555;margin-top:6px;text-align:center;"></div>
     </div>
 
     <div style="padding:10px 16px 4px;border-bottom:1px solid #222;">
@@ -728,6 +731,9 @@ html, body {
       </div>
     </div>
 
+    <div style="padding:10px 16px 4px;">
+      <div style="font-size:9px;color:#2a2a2a;text-align:center;">Spend Tracker v2.0.0</div>
+    </div>
     <button class="sheet-btn-ghost" onclick="closeSheet('settings-sheet')">Close</button>
   </div>
 </div>
@@ -742,6 +748,11 @@ html, body {
     <button class="sheet-btn-ghost" onclick="closeSheet('confirm-reset-sheet')">Cancel</button>
   </div>
 </div>
+
+<!-- Firebase SDKs — must load before app script -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
 // ══ STATE ══
@@ -772,8 +783,8 @@ function save() {
   localStorage.setItem('st_archive',  JSON.stringify(archived));
   localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
   lastLocalSave = Date.now();
-  // Auto-push to Cloudflare in background after every save
-  setTimeout(cfPush, 500);
+  // Real-time write to Firebase after every save
+  setTimeout(fbWrite, 300);
 }
 
 // ══ POINTS CALC ══
@@ -2964,8 +2975,6 @@ document.addEventListener('touchmove', e=>{
 
 // ══ SETTINGS ══
 function openSettingsSheet() {
-  const el = document.getElementById('cf-apikey-input');
-  if (el && cfApiKey) el.value = cfApiKey;
   openSheet('settings-sheet');
 }
 
@@ -3075,31 +3084,34 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
   reader.readAsText(file);
 }
 
-// ══ CLOUDFLARE SYNC ══
-const CF_WORKER_URL  = 'https://spend-tracker-sync.fangjw.workers.dev';
-const CF_TSYNC_KEY   = 'st_cf_tsync';
-const CF_PENDING_KEY = 'st_cf_pending';
-const CF_APIKEY_KEY  = 'st_cf_apikey';
+// ══ FIREBASE SYNC ══
+const APP_VERSION = 'v2.0.0';
 
-let cfApiKey        = localStorage.getItem(CF_APIKEY_KEY) || '';
-let cfPendingSync   = localStorage.getItem(CF_PENDING_KEY) === '1';
-let cfPushing       = false;   // true while a push is in flight
-let lastLocalSave   = Date.now(); // timestamp of last local save
+// Firebase is loaded via CDN scripts in <head>
+// Config
+const firebaseConfig = {
+  apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
+  authDomain:        "spend-tracker-fa8f6.firebaseapp.com",
+  databaseURL:       "https://spend-tracker-fa8f6-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "spend-tracker-fa8f6",
+  storageBucket:     "spend-tracker-fa8f6.firebasestorage.app",
+  messagingSenderId: "785844337753",
+  appId:             "1:785844337753:web:4d1d138e2c154f34000548"
+};
 
-function cfConfigured() { return !!cfApiKey; }
-function saveCfConfig() {
-  cfApiKey = document.getElementById('cf-apikey-input').value.trim();
-  localStorage.setItem(CF_APIKEY_KEY, cfApiKey);
-}
+// Initialise Firebase
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const fbDb   = firebase.database();
 
-function setCfStatus(msg, color) {
-  const el = document.getElementById('cf-status');
-  if (el) { el.textContent = msg; el.style.color = color || '#888'; }
-}
+let fbUser         = null;
+let fbListener     = null; // active realtime listener
+let fbWriting      = false; // true while writing to Firebase
+let lastLocalSave  = Date.now();
 
+// ── Sync indicator ──
 function setSyncIndicator(state) {
-  const el     = document.getElementById('sync-indicator');
-  const timeEl = document.getElementById('sync-time');
+  const el = document.getElementById('sync-indicator');
   if (!el) return;
   const states = {
     synced:  { text: '● synced',  color: '#27ae60', bg: '#0a1f0f' },
@@ -3112,100 +3124,45 @@ function setSyncIndicator(state) {
   el.textContent      = s.text;
   el.style.color      = s.color;
   el.style.background = s.bg;
-  if (timeEl) {
-    if (state === 'synced') {
-      const now = new Date();
-      timeEl.textContent = now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
-    } else if (state === 'none') {
-      timeEl.textContent = '';
-    }
-  }
+}
+
+function setFbStatus(msg, color) {
+  const el = document.getElementById('fb-status');
+  if (el) { el.textContent = msg; el.style.color = color || '#888'; }
 }
 
 function buildSyncPayload() {
   return { savedAt: new Date().toISOString(), version: 3, cards, txns, archived, bonusDue };
 }
 
-function markPendingSync() {
-  cfPendingSync = true;
-  localStorage.setItem(CF_PENDING_KEY, '1');
-  setSyncIndicator('pending');
-}
-
-// ── Push to Cloudflare KV ──
-async function cfPush() {
-  if (!cfConfigured()) { setSyncIndicator('none'); return false; }
-  if (cfPushing) return false; // already pushing, skip
-  cfPushing = true;
+// ── Write to Firebase ──
+function fbWrite() {
+  if (!fbUser) return;
+  fbWriting = true;
   setSyncIndicator('syncing');
-  try {
-    // Safety: check if cloud has newer data before pushing
-    const localTs = localStorage.getItem(CF_TSYNC_KEY) || '';
-    if (localTs) {
-      const checkRes  = await fetch(CF_WORKER_URL, { headers: { 'X-Api-Key': cfApiKey } });
-      if (checkRes.ok) {
-        const cloudData = await checkRes.json();
-        if (cloudData && cloudData.savedAt && cloudData.savedAt > localTs) {
-          setCfStatus('⚠ Cloud has newer data — Pull first, then Push', '#f0c040');
-          setSyncIndicator('pending');
-          return false;
-        }
-      }
-    }
-
-    const payload = buildSyncPayload();
-    const res = await fetch(CF_WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Api-Key': cfApiKey },
-      body: JSON.stringify(payload),
+  const payload = buildSyncPayload();
+  fbDb.ref('data').set(payload)
+    .then(() => {
+      fbWriting = false;
+      setSyncIndicator('synced');
+    })
+    .catch(e => {
+      fbWriting = false;
+      console.warn('FB write failed:', e);
+      setSyncIndicator('pending');
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-
-    localStorage.setItem(CF_TSYNC_KEY, payload.savedAt);
-    localStorage.removeItem(CF_PENDING_KEY);
-    cfPendingSync = false;
-    cfPushing = false;
-    setSyncIndicator('synced');
-    setCfStatus('Synced ' + new Date().toLocaleTimeString(), '#27ae60');
-    return true;
-  } catch(e) {
-    console.warn('CF push failed:', e);
-    setCfStatus('Push error: ' + e.message, '#ff6b6b');
-    cfPushing = false;
-    markPendingSync();
-    return false;
-  }
 }
 
-// ── Pull from Cloudflare KV ──
-async function cfPull(force) {
-  if (!cfConfigured()) return null;
-  try {
-    const res = await fetch(CF_WORKER_URL, { headers: { 'X-Api-Key': cfApiKey } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const remote = await res.json();
-    if (!remote || !remote.savedAt) return null;
-
-    const localTs = localStorage.getItem(CF_TSYNC_KEY) || '';
-    if (!force && remote.savedAt <= localTs) return null; // already up to date
-
-    return remote;
-  } catch(e) {
-    console.warn('CF pull failed:', e);
-    setCfStatus('Pull error: ' + e.message, '#ff6b6b');
-    return null;
-  }
-}
-
-// ── Apply remote data safely ──
+// ── Apply remote data (from Firebase listener) ──
 function applyRemote(remote) {
-  if (!remote) return false;
+  if (!remote || !remote.savedAt) return false;
+  // Don't overwrite if we just saved locally within 2s (our own write coming back)
+  if (Date.now() - lastLocalSave < 2000) return false;
   cards    = Array.isArray(remote.cards)    ? remote.cards    : cards;
   txns     = Array.isArray(remote.txns)     ? remote.txns     : txns;
   archived = Array.isArray(remote.archived) ? remote.archived : archived;
   bonusDue = Array.isArray(remote.bonusDue) ? remote.bonusDue : bonusDue;
-  localStorage.setItem(CF_TSYNC_KEY, remote.savedAt);
-  // Write to localStorage directly — do NOT call save() as that would trigger another push
+  // Write to localStorage without triggering another push
   localStorage.setItem('st_cards',    JSON.stringify(cards));
   localStorage.setItem('st_txns',     JSON.stringify(txns));
   localStorage.setItem('st_archive',  JSON.stringify(archived));
@@ -3213,76 +3170,74 @@ function applyRemote(remote) {
   return true;
 }
 
-// ── Public: sync now (push) ──
-async function cfSyncNow() {
-  setCfStatus('Uploading...', '#6bc5ff');
-  await cfPush();
-}
-
-// ── Public: pull from cloud ──
-async function cfPullNow() {
-  setCfStatus('Fetching from cloud...', '#6bc5ff');
-  const remote = await cfPull(true); // force pull
-  if (!remote) { setCfStatus('Nothing to pull or error.', '#888'); return; }
-  applyRemote(remote);
-  runMigrations();
-  render();
-  setSyncIndicator('synced');
-  setCfStatus('Pulled ✓ ' + new Date().toLocaleTimeString(), '#27ae60');
-}
-
-// ── Test connection ──
-async function cfTestConnection() {
-  if (!cfConfigured()) { setCfStatus('Enter your API key first.', '#ff6b6b'); return; }
-  setCfStatus('Testing...', '#6bc5ff');
-  try {
-    const res  = await fetch(CF_WORKER_URL, { headers: { 'X-Api-Key': cfApiKey } });
-    if (res.status === 401) { setCfStatus('❌ Wrong API key', '#ff6b6b'); return; }
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (data && data.savedAt) {
-      const ts = data.savedAt.slice(0,19).replace('T',' ');
-      setCfStatus('✓ Connected · Last sync: ' + ts, '#27ae60');
-    } else {
-      setCfStatus('✓ Connected · No data yet — tap Push first', '#f0c040');
+// ── Start realtime listener ──
+function fbStartListener() {
+  if (fbListener) { fbListener(); fbListener = null; } // detach old listener
+  fbListener = fbDb.ref('data').on('value', snapshot => {
+    const remote = snapshot.val();
+    if (!remote) { setSyncIndicator('synced'); return; }
+    if (fbWriting) return; // ignore echo of our own write
+    if (applyRemote(remote)) {
+      runMigrations();
+      render();
     }
-  } catch(e) {
-    setCfStatus('❌ Error: ' + e.message, '#ff6b6b');
-  }
-}
-
-// ── Background sync ──
-async function bgPull() {
-  if (navigator.onLine === false) return;
-  if (cfPushing) return; // push in progress — skip pull
-  if (Date.now() - lastLocalSave < 3000) return; // local save < 3s ago — wait for push
-  try {
-    const remote = await cfPull(false);
-    if (!remote) return;
-    applyRemote(remote);
-    runMigrations();
-    render();
     setSyncIndicator('synced');
-  } catch(e) {
-    console.warn('bgPull error (ignored):', e);
+  }, err => {
+    console.warn('FB listener error:', err);
+    setSyncIndicator('offline');
+  });
+}
+
+// ── Stop listener ──
+function fbStopListener() {
+  if (fbListener) {
+    fbDb.ref('data').off('value', fbListener);
+    fbListener = null;
   }
 }
 
-window.addEventListener('online', async () => {
-  if (cfPendingSync) {
-    setCfStatus('Back online — syncing...', '#6bc5ff');
-    await cfPush();
+// ── Sign in with Google ──
+function fbSignIn() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  fbAuth.signInWithPopup(provider)
+    .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
+}
+
+// ── Sign out ──
+function fbSignOut() {
+  fbStopListener();
+  fbAuth.signOut();
+}
+
+// ── Auth state listener ──
+fbAuth.onAuthStateChanged(user => {
+  fbUser = user;
+  const signedOut = document.getElementById('fb-signed-out');
+  const signedIn  = document.getElementById('fb-signed-in');
+  const userInfo  = document.getElementById('fb-user-info');
+
+  if (user) {
+    if (signedOut) signedOut.style.display = 'none';
+    if (signedIn)  signedIn.style.display  = 'block';
+    if (userInfo)  userInfo.innerHTML = `<span style="color:#eee;">${user.displayName}</span><br><span style="color:#444;font-size:10px;">${user.email}</span>`;
+    setFbStatus('Connected ✓', '#27ae60');
+    setSyncIndicator('synced');
+    fbStartListener();
+    // Push any local data to Firebase on first sign-in
+    fbWrite();
+  } else {
+    if (signedOut) signedOut.style.display = 'block';
+    if (signedIn)  signedIn.style.display  = 'none';
+    if (userInfo)  userInfo.textContent = '';
+    setFbStatus('', '');
+    setSyncIndicator('none');
+    fbStopListener();
   }
 });
-window.addEventListener('offline', () => { setSyncIndicator('offline'); });
 
-// Option A: pull when app comes back into focus
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') bgPull();
-});
-
-// Option B: pull every 60 seconds
-setInterval(bgPull, 60000);
+// ── Connectivity ──
+window.addEventListener('offline', () => setSyncIndicator('offline'));
+window.addEventListener('online',  () => { if (fbUser) setSyncIndicator('synced'); });
 
 // ══ INIT ══
 // Migration: patch any saved card that is missing fields added after initial save
@@ -3367,19 +3322,8 @@ render();
 fetchFxRates(); // fetch live FX rates on load
 
 // ── Initial pull from Cloudflare on load (background, non-blocking) ──
-(async () => {
-  if (!cfConfigured()) { setSyncIndicator('none'); return; }
-  setSyncIndicator('syncing');
-  const remote = await cfPull(false);
-  if (remote) {
-    applyRemote(remote);
-    runMigrations();
-    render();
-  }
-  setSyncIndicator(cfPendingSync ? 'pending' : 'synced');
-  // If there were pending changes from offline use, push them now
-  if (cfPendingSync) await cfPush();
-})();
+// Firebase auth listener handles sync on load — no manual init needed
+setSyncIndicator('none'); // will update once auth state resolves
 </script>
 </body>
 </html>
