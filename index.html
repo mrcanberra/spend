@@ -740,7 +740,7 @@ html, body {
     </div>
 
     <div style="padding:10px 16px 4px;">
-      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.2.0</div>
+      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.3.0</div>
     </div>
     <button class="sheet-btn-ghost" onclick="closeSheet('settings-sheet')">Close</button>
   </div>
@@ -760,7 +760,7 @@ html, body {
 <!-- Firebase SDKs — must load before app script -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
 // ══ STATE ══
@@ -790,9 +790,8 @@ function save() {
   localStorage.setItem('st_txns',     JSON.stringify(txns));
   localStorage.setItem('st_archive',  JSON.stringify(archived));
   localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
-  lastLocalSave = Date.now();
-  // Real-time write to Firebase after every save
-  setTimeout(fbWrite, 300);
+  // Schedule debounced Firestore write (batches rapid saves)
+  scheduleWrite();
 }
 
 // ══ POINTS CALC ══
@@ -1217,6 +1216,11 @@ function renderCapPanel() {
     };
     chipsEl.appendChild(chip);
   });
+
+  // Spacer to prevent last chip being clipped on iOS scroll
+  const spacer = document.createElement('span');
+  spacer.style.cssText = 'flex-shrink:0;width:12px;display:inline-block;';
+  chipsEl.appendChild(spacer);
 
   // ── Bar rows: show selected card only, or all if none selected ──
   const visibleCards = selectedCapCardId
@@ -3125,139 +3129,147 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
   reader.readAsText(file);
 }
 
-// ══ FIREBASE SYNC ══
-const APP_VERSION = 'v2.0.0';
+// ══ FIREBASE SYNC — Firestore ══
+const APP_VERSION = 'v2.3.0';
 
-// Firebase is loaded via CDN scripts in <head>
-// Config
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
   authDomain:        "spend-tracker-fa8f6.firebaseapp.com",
-  databaseURL:       "https://spend-tracker-fa8f6-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId:         "spend-tracker-fa8f6",
   storageBucket:     "spend-tracker-fa8f6.firebasestorage.app",
   messagingSenderId: "785844337753",
   appId:             "1:785844337753:web:4d1d138e2c154f34000548"
 };
 
-// Initialise Firebase (only if SDK loaded — won't be available when opening as local file)
-let fbAuth = null, fbDb = null;
+let fbAuth = null, fbDb = null, fbUser = null, fbUnsubscribe = null;
+let fbWritePending = false, fbWriteTimer = null;
+
 try {
   firebase.initializeApp(firebaseConfig);
   fbAuth = firebase.auth();
-  fbDb   = firebase.database();
+  fbDb   = firebase.firestore();
 } catch(e) {
-  console.warn('Firebase init failed (SDK not loaded?):', e.message);
+  console.warn('Firebase init failed:', e.message);
 }
 
-let fbUser         = null;
-let fbListener     = null; // active realtime listener
-let fbWriting      = false; // true while writing to Firebase
-let lastLocalSave  = Date.now();
-
-// ── Sync indicator ──
+// ── UI helpers ──
 function setSyncIndicator(state) {
   const el = document.getElementById('sync-indicator');
   if (!el) return;
-  const states = {
-    synced:  { text: '● synced',  color: '#27ae60', bg: '#0a1f0f' },
-    pending: { text: '● pending', color: '#f0c040', bg: '#1a1500' },
-    syncing: { text: '↑ syncing', color: '#6bc5ff', bg: '#0a1020' },
-    offline: { text: '● offline', color: '#ff6b6b', bg: '#1f0a0a' },
-    none:    { text: '⚙ sync',    color: '#555',    bg: '#1a1a1a' },
+  const S = {
+    synced:  { text:'● synced',  color:'#27ae60', bg:'#0a1f0f' },
+    pending: { text:'● pending', color:'#f0c040', bg:'#1a1500' },
+    syncing: { text:'↑ syncing', color:'#6bc5ff', bg:'#0a1020' },
+    offline: { text:'● offline', color:'#ff6b6b', bg:'#1f0a0a' },
+    none:    { text:'⚙ sync',    color:'#555',    bg:'#1a1a1a' },
   };
-  const s = states[state] || states.none;
-  el.textContent      = s.text;
-  el.style.color      = s.color;
-  el.style.background = s.bg;
+  const s = S[state] || S.none;
+  el.textContent = s.text; el.style.color = s.color; el.style.background = s.bg;
 }
-
 function setFbStatus(msg, color) {
   const el = document.getElementById('fb-status');
   if (el) { el.textContent = msg; el.style.color = color || '#888'; }
 }
 
-function buildSyncPayload() {
-  return { savedAt: new Date().toISOString(), version: 3, cards, txns, archived, bonusDue };
-}
-
-// ── Write to Firebase ──
-function fbWrite() {
+// ── Debounced write — batches rapid saves into one Firestore write ──
+function scheduleWrite() {
   if (!fbUser || !fbDb) return;
-  fbWriting = true;
+  if (fbWriteTimer) clearTimeout(fbWriteTimer);
   setSyncIndicator('syncing');
-  const payload = buildSyncPayload();
-  fbDb.ref('data').set(payload)
-    .then(() => {
-      fbWriting = false;
-      setSyncIndicator('synced');
-    })
-    .catch(e => {
-      fbWriting = false;
-      console.warn('FB write failed:', e);
-      setSyncIndicator('pending');
-    });
+  fbWritePending = true;
+  fbWriteTimer = setTimeout(doWrite, 800); // wait 800ms for burst to settle
 }
 
-// ── Apply remote data (from Firebase listener) ──
-function applyRemote(remote) {
-  if (!remote || !remote.savedAt) return false;
-  // Don't overwrite if we just saved locally within 2s (our own write coming back)
-  if (Date.now() - lastLocalSave < 2000) return false;
-  cards    = Array.isArray(remote.cards)    ? remote.cards    : cards;
-  txns     = Array.isArray(remote.txns)     ? remote.txns     : txns;
-  archived = Array.isArray(remote.archived) ? remote.archived : archived;
-  bonusDue = Array.isArray(remote.bonusDue) ? remote.bonusDue : bonusDue;
-  // Write to localStorage without triggering another push
-  localStorage.setItem('st_cards',    JSON.stringify(cards));
-  localStorage.setItem('st_txns',     JSON.stringify(txns));
-  localStorage.setItem('st_archive',  JSON.stringify(archived));
-  localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
-  return true;
-}
-
-// ── Start realtime listener ──
-function fbStartListener() {
-  if (!fbDb) return;
-  if (fbListener) { fbListener(); fbListener = null; } // detach old listener
-  fbListener = fbDb.ref('data').on('value', snapshot => {
-    const remote = snapshot.val();
-    if (!remote) { setSyncIndicator('synced'); return; }
-    if (fbWriting) return; // ignore echo of our own write
-    if (applyRemote(remote)) {
-      runMigrations();
-      render();
-    }
+async function doWrite() {
+  if (!fbUser || !fbDb) return;
+  try {
+    const payload = {
+      savedAt:  firebase.firestore.FieldValue.serverTimestamp(),
+      savedBy:  fbUser.uid,
+      cards:    JSON.stringify(cards),
+      txns:     JSON.stringify(txns),
+      archived: JSON.stringify(archived),
+      bonusDue: JSON.stringify(bonusDue),
+    };
+    await fbDb.collection('users').doc(fbUser.uid).set(payload, { merge: true });
+    fbWritePending = false;
     setSyncIndicator('synced');
-  }, err => {
-    console.warn('FB listener error:', err);
-    setSyncIndicator('offline');
-  });
-}
-
-// ── Stop listener ──
-function fbStopListener() {
-  if (fbListener) {
-    fbDb.ref('data').off('value', fbListener);
-    fbListener = null;
+  } catch(e) {
+    console.warn('Firestore write failed:', e);
+    setSyncIndicator('pending');
+    setFbStatus('Write error: ' + e.message, '#ff6b6b');
   }
 }
 
-// ── Sign in with Google ──
+// ── Real-time listener — applies remote changes ──
+function fbStartListener() {
+  if (!fbUser || !fbDb) return;
+  if (fbUnsubscribe) { fbUnsubscribe(); fbUnsubscribe = null; }
+
+  fbUnsubscribe = fbDb.collection('users').doc(fbUser.uid)
+    .onSnapshot(snap => {
+      // If we have a pending local write, skip incoming snapshot (it's stale)
+      if (fbWritePending || fbWriteTimer) return;
+
+      if (!snap.exists) {
+        // No cloud data yet — push local data up
+        scheduleWrite();
+        return;
+      }
+
+      const d = snap.data();
+      try {
+        const remoteCards    = JSON.parse(d.cards    || '[]');
+        const remoteTxns     = JSON.parse(d.txns     || '[]');
+        const remoteArchived = JSON.parse(d.archived || '[]');
+        const remoteBonusDue = JSON.parse(d.bonusDue || '[]');
+
+        // Only apply if remote has data worth applying
+        const remoteCount = remoteTxns.length + remoteArchived.length + remoteCards.length;
+        const localCount  = txns.length + archived.length + cards.length;
+
+        if (remoteCount === 0 && localCount > 0) return; // ignore empty remote
+
+        cards    = remoteCards;
+        txns     = remoteTxns;
+        archived = remoteArchived;
+        bonusDue = remoteBonusDue;
+
+        // Sync to localStorage quietly
+        localStorage.setItem('st_cards',    d.cards    || '[]');
+        localStorage.setItem('st_txns',     d.txns     || '[]');
+        localStorage.setItem('st_archive',  d.archived || '[]');
+        localStorage.setItem('st_bonusdue', d.bonusDue || '[]');
+
+        runMigrations();
+        render();
+        setSyncIndicator('synced');
+      } catch(e) {
+        console.warn('Firestore parse error:', e);
+      }
+    }, err => {
+      console.warn('Firestore listener error:', err);
+      setSyncIndicator('offline');
+    });
+}
+
+function fbStopListener() {
+  if (fbUnsubscribe) { fbUnsubscribe(); fbUnsubscribe = null; }
+}
+
+// ── Google sign-in ──
 function fbSignIn() {
-  if (!fbAuth) { setFbStatus('Firebase not available — open via GitHub Pages URL', '#ff6b6b'); return; }
+  if (!fbAuth) { setFbStatus('Open via GitHub Pages URL to use sync.', '#ff6b6b'); return; }
   const provider = new firebase.auth.GoogleAuthProvider();
   fbAuth.signInWithPopup(provider)
     .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
 }
-
-// ── Sign out ──
 function fbSignOut() {
   fbStopListener();
-  fbAuth.signOut();
+  if (fbAuth) fbAuth.signOut();
 }
 
-// ── Auth state listener ──
+// ── Auth state ──
 if (fbAuth) fbAuth.onAuthStateChanged(user => {
   fbUser = user;
   const signedOut = document.getElementById('fb-signed-out');
@@ -3267,12 +3279,12 @@ if (fbAuth) fbAuth.onAuthStateChanged(user => {
   if (user) {
     if (signedOut) signedOut.style.display = 'none';
     if (signedIn)  signedIn.style.display  = 'block';
-    if (userInfo)  userInfo.innerHTML = `<span style="color:#eee;">${user.displayName}</span><br><span style="color:#444;font-size:10px;">${user.email}</span>`;
+    if (userInfo)  userInfo.innerHTML =
+      `<span style="color:#eee;">${user.displayName}</span><br>` +
+      `<span style="color:#555;font-size:10px;">${user.email}</span>`;
     setFbStatus('Connected ✓', '#27ae60');
     setSyncIndicator('synced');
     fbStartListener();
-    // Push any local data to Firebase on first sign-in
-    fbWrite();
   } else {
     if (signedOut) signedOut.style.display = 'block';
     if (signedIn)  signedIn.style.display  = 'none';
