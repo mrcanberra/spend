@@ -66,9 +66,17 @@ html, body {
   padding: 8px 14px 6px;
 }
 .cap-panel-chips {
-  display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px;
+  display: flex; flex-wrap: nowrap; gap: 5px; margin-bottom: 6px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  padding-right: 16px; /* prevents last chip from being clipped */
 }
-.legend-chip { font-size: 9px; padding: 2px 7px; border-radius: 4px; font-weight: 700; cursor: pointer; }
+.cap-panel-chips::-webkit-scrollbar { display: none; }
+.legend-chip {
+  font-size: 9px; padding: 2px 0; border-radius: 4px; font-weight: 700;
+  cursor: pointer; flex-shrink: 0; flex: 0 0 auto;
+  min-width: 52px; text-align: center;
+}
 .cap-card-row {
   margin-bottom: 7px;
 }
@@ -120,7 +128,7 @@ html, body {
 .bt-posted   { color: #c06bff; }
 .bucket-count { font-size: 10px; background: #252525; color: #666; border-radius: 10px; padding: 1px 7px; }
 .bucket-total { font-size: 11px; font-weight: 600; color: #f0c04077; }
-.chevron { font-size: 9px; color: #3a3a3a; margin-left: 4px; display: inline-block; transition: transform 0.2s; }
+.chevron { font-size: 9px; color: #666; margin-left: 4px; display: inline-block; transition: transform 0.2s; }
 .chevron.open { transform: rotate(180deg); }
 
 /* TXN ROW */
@@ -151,10 +159,10 @@ html, body {
 
 /* Points */
 .txn-pts { font-size: 11px; font-weight: 600; color: #f0c040; text-align: right; white-space: nowrap; flex-shrink: 0; }
-.txn-pts.dim { color: #2e2e2e; }
+.txn-pts.dim { color: #555; }
 
 /* Note */
-.txn-note { font-size: 9px; color: #3a3a3a; max-width: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+.txn-note { font-size: 9px; color: #666; max-width: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
 
 /* Status badge */
 .sbadge {
@@ -732,7 +740,7 @@ html, body {
     </div>
 
     <div style="padding:10px 16px 4px;">
-      <div style="font-size:9px;color:#2a2a2a;text-align:center;">Spend Tracker v2.0.0</div>
+      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.2.0</div>
     </div>
     <button class="sheet-btn-ghost" onclick="closeSheet('settings-sheet')">Close</button>
   </div>
@@ -1009,34 +1017,55 @@ async function fetchFxRates() {
   // Refresh at most once per hour
   if (fxLastFetched && (now - parseInt(fxLastFetched)) < 3600000) return;
 
-  // Try primary source: open.er-api.com (free, no key, broad currency support)
-  const PRIMARY   = 'https://open.er-api.com/v6/latest/SGD';
-  // Fallback: exchangerate.host (also free, no key)
-  const SECONDARY = 'https://api.exchangerate.host/latest?base=SGD&symbols=MYR,JPY,HKD,MOP,THB,EUR,USD';
+  // Currencies needed (MOP not available on most APIs — derive from HKD)
+  const SYMS = 'MYR,JPY,HKD,THB,EUR,USD';
+
+  // Try 3 reliable free APIs in order
+  const SOURCES = [
+    // 1. Frankfurter (ECB data, reliable, no key)
+    { url: `https://api.frankfurter.app/latest?from=SGD&to=${SYMS}`,
+      extract: d => d && d.rates },
+    // 2. open.er-api.com (free, no key)
+    { url: 'https://open.er-api.com/v6/latest/SGD',
+      extract: d => d && d.rates },
+    // 3. Currency API (free tier)
+    { url: 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/sgd.json',
+      extract: d => {
+        if (!d || !d.sgd) return null;
+        // This API returns SGD→X rates already
+        const r = {};
+        Object.keys(d.sgd).forEach(k => { r[k.toUpperCase()] = d.sgd[k]; });
+        return r;
+      }
+    },
+  ];
 
   const applyRates = (ratesObj) => {
+    // ratesObj is SGD→X (how many X per 1 SGD)
+    // We store X→SGD (how many SGD per 1 X) = 1/rate
     FCY_LIST.forEach(ccy => {
-      if (ratesObj[ccy]) fxRates[ccy] = 1 / ratesObj[ccy]; // invert SGD→X to X→SGD
+      if (ratesObj[ccy]) fxRates[ccy] = 1 / ratesObj[ccy];
     });
-    // MOP: if not in response, approximate from HKD (1 MOP ≈ 0.97 HKD)
+    // MOP: derive from HKD (1 MOP ≈ 0.97 HKD)
     if (!fxRates['MOP'] && fxRates['HKD']) fxRates['MOP'] = fxRates['HKD'] * 0.97;
     fxLastFetched = String(now);
     localStorage.setItem('st_fxrates', JSON.stringify(fxRates));
     localStorage.setItem('st_fxlast',  fxLastFetched);
-    render(); // full render so FCY rows in buckets also show updated SGD estimates
+    render();
   };
 
-  try {
-    const res  = await fetch(PRIMARY);
-    const data = await res.json();
-    if (data && data.rates) { applyRates(data.rates); return; }
-  } catch(e) { /* fall through to secondary */ }
-
-  try {
-    const res  = await fetch(SECONDARY);
-    const data = await res.json();
-    if (data && data.rates) { applyRates(data.rates); return; }
-  } catch(e) { /* both failed — use cached */ }
+  for (const src of SOURCES) {
+    try {
+      const res  = await fetch(src.url);
+      if (!res.ok) continue;
+      const data  = await res.json();
+      const rates = src.extract(data);
+      if (rates && Object.keys(rates).length > 0) {
+        applyRates(rates);
+        return;
+      }
+    } catch(e) { /* try next */ }
+  }
 
   console.log('FX fetch failed — using cached rates');
 }
@@ -1160,12 +1189,12 @@ function renderCapPanel() {
   if (dotEl) dotEl.className = isCurrentMonth ? 'current-month' : '';
 
   if (!cards.length) {
-    chipsEl.innerHTML = '<span style="font-size:10px;color:#3a3a3a;cursor:pointer;" onclick="openSettingsSheet()">+ Add your first card via Settings ⚙</span>';
+    chipsEl.innerHTML = '<span style="font-size:10px;color:#666;cursor:pointer;" onclick="openSettingsSheet()">+ Add your first card via Settings ⚙</span>';
     return;
   }
 
-  // ── Chip row: tap to filter, tap again to clear ──
-  cards.forEach(c => {
+  // ── Chip row: alphabetical, tap to filter, tap again to clear ──
+  [...cards].sort((a,b) => a.name.localeCompare(b.name)).forEach(c => {
     const isSelected = selectedCapCardId === c.id;
     const chip = document.createElement('span');
     chip.className = 'legend-chip';
@@ -1497,13 +1526,13 @@ function renderBucket(b) {
     if (b === 'upcoming') {
       return (a.chargeDate||'9999') > (z.chargeDate||'9999') ? 1 : -1;
     }
-    // Group by card name, then newest first within each card
+    // Pending + Posted: group by card name A→Z, oldest first within each card
     const cA = cards.find(c=>c.id===a.cardId);
     const cZ = cards.find(c=>c.id===z.cardId);
     const nameA = cA ? cA.name : '';
     const nameZ = cZ ? cZ.name : '';
     if (nameA !== nameZ) return nameA.localeCompare(nameZ);
-    return new Date(z.createdAt) - new Date(a.createdAt);
+    return new Date(a.createdAt) - new Date(z.createdAt); // oldest first
   });
 
   sorted.forEach(t => {
@@ -1575,21 +1604,21 @@ function renderBucket(b) {
       ptsBlock.style.cssText = 'display:flex;align-items:baseline;gap:4px;flex-shrink:0;white-space:nowrap;font-size:11px;';
 
       if (isFcy) {
-        ptsBlock.innerHTML = '<span style="color:#2e2e2e">— pts</span>';
+        ptsBlock.innerHTML = '<span style="color:#555">— pts</span>';
       } else if (card && card.bonusUnknown) {
         // Sig-style: bonus only known at statement end — show base only, bonus as —
         const bEl = document.createElement('span');
         bEl.style.cssText = 'font-weight:700;color:#f0c040;';
         bEl.textContent   = pts.base.toLocaleString();
         const sep = document.createElement('span');
-        sep.style.cssText = 'color:#2e2e2e;font-size:9px;';
+        sep.style.cssText = 'color:#555;font-size:9px;';
         sep.textContent   = '|';
         const bnEl = document.createElement('span');
-        bnEl.style.cssText = 'color:#2e2e2e;';
+        bnEl.style.cssText = 'color:#555;';
         bnEl.textContent   = '—';
         bnEl.title         = 'Bonus calculated at statement end';
         const lbl = document.createElement('span');
-        lbl.style.cssText  = 'font-size:8px;color:#2e2e2e;margin-left:1px;';
+        lbl.style.cssText  = 'font-size:8px;color:#555;margin-left:1px;';
         lbl.textContent    = 'base';
         ptsBlock.appendChild(bEl);
         ptsBlock.appendChild(sep);
@@ -1605,29 +1634,29 @@ function renderBucket(b) {
         bEl.textContent = pts.base.toLocaleString();
 
         const sep1 = document.createElement('span');
-        sep1.style.cssText = 'color:#2e2e2e;font-size:9px;';
+        sep1.style.cssText = 'color:#555;font-size:9px;';
         sep1.textContent = '|';
 
         // Bonus
         const bnEl = document.createElement('span');
-        bnEl.style.cssText = delayed ? 'color:#2e2e2e;' : 'color:#555;';
+        bnEl.style.cssText = delayed ? 'color:#555;' : 'color:#555;';
         bnEl.textContent = pts.bonus.toLocaleString();
         if (delayed) bnEl.title = 'Bonus arrives next month';
 
         const sep2 = document.createElement('span');
-        sep2.style.cssText = 'color:#2e2e2e;font-size:9px;';
+        sep2.style.cssText = 'color:#555;font-size:9px;';
         sep2.textContent = '|';
 
         // Total
         const totEl = document.createElement('span');
         totEl.style.cssText = delayed
-          ? 'color:#2e2e2e;'                            // muted when delayed
+          ? 'color:#555;'                            // muted when delayed
           : 'font-weight:700;color:#f0c040;';           // highlighted when not delayed
         totEl.textContent = pts.total.toLocaleString();
 
         // Label underneath
         const lbl = document.createElement('span');
-        lbl.style.cssText = 'font-size:8px;color:#2e2e2e;margin-left:1px;';
+        lbl.style.cssText = 'font-size:8px;color:#555;margin-left:1px;';
         lbl.textContent = delayed ? 'base' : 'pts';
 
         ptsBlock.appendChild(bEl);
@@ -2001,9 +2030,9 @@ function openVerifySheet(id) {
   } else if (delayed) {
     info.innerHTML = `<b style="color:#eee">${card?card.name:'?'}</b> &nbsp; ${fmtAmt(t.amount,t.currency)}<br>
       <span style="color:#f0c040;font-weight:700;">Base: ${pts.base.toLocaleString()} pts</span>
-      <span style="color:#2e2e2e;font-size:11px;margin-left:6px;">verify now</span><br>
+      <span style="color:#555;font-size:11px;margin-left:6px;">verify now</span><br>
       <span style="color:#333;">Bonus: ${pts.bonus.toLocaleString()} pts</span>
-      <span style="color:#2e2e2e;font-size:11px;margin-left:6px;">arrives next month — verify separately</span><br>
+      <span style="color:#555;font-size:11px;margin-left:6px;">arrives next month — verify separately</span><br>
       <span style="font-size:11px;color:#444;">Confirm base pts received, then archive.</span>`;
   } else {
     info.innerHTML = `<b style="color:#eee">${card?card.name:'?'}</b> &nbsp; ${fmtAmt(t.amount,t.currency)}<br>
@@ -2467,11 +2496,11 @@ function renderPresetList() {
     row.innerHTML = `
       <div style="flex:1;min-width:0">
         <span style="font-size:12px;font-weight:700;color:${p.color}">${p.name}</span>
-        <span style="font-size:10px;color:#3a3a3a;margin-left:6px">${p.baseRate}+${p.bonusRate}pts/$1 · cap $${p.capSpend}/mth</span>
-        ${p.note ? '<div style="font-size:9px;color:#3a3a3a;margin-top:2px">'+p.note+'</div>' : ''}
+        <span style="font-size:10px;color:#666;margin-left:6px">${p.baseRate}+${p.bonusRate}pts/$1 · cap $${p.capSpend}/mth</span>
+        ${p.note ? '<div style="font-size:9px;color:#666;margin-top:2px">'+p.note+'</div>' : ''}
       </div>
       ${alreadyAdded
-        ? '<span style="font-size:10px;color:#3a3a3a;padding:4px 8px;flex-shrink:0">Added ✓</span>'
+        ? '<span style="font-size:10px;color:#666;padding:4px 8px;flex-shrink:0">Added ✓</span>'
         : '<span style="font-size:11px;color:#f0c040;cursor:pointer;padding:4px 8px;flex-shrink:0;font-weight:700;" onclick="addPreset(\'' + p.id + '\')">+ Add</span>'
       }
     `;
@@ -2495,7 +2524,7 @@ function renderCardList() {
   const el = document.getElementById('card-list-el');
   el.innerHTML = '';
   if (!cards.length) {
-    el.innerHTML = '<div style="padding:12px 0;font-size:11px;color:#3a3a3a;">No cards yet. Add a preset or create one below.</div>';
+    el.innerHTML = '<div style="padding:12px 0;font-size:11px;color:#666;">No cards yet. Add a preset or create one below.</div>';
     return;
   }
   cards.forEach(c => {
@@ -2506,7 +2535,7 @@ function renderCardList() {
     row.innerHTML = `
       <div style="flex:1;min-width:0;cursor:pointer;" onclick="editCard('${c.id}')">
         <span style="font-size:13px;font-weight:700;color:${c.color}">${c.name}</span>
-        <span style="font-size:10px;color:#3a3a3a;margin-left:6px">${c.baseRate}+${c.bonusRate}pts/$1${fcyInfo}${capInfo}</span>
+        <span style="font-size:10px;color:#666;margin-left:6px">${c.baseRate}+${c.bonusRate}pts/$1${fcyInfo}${capInfo}</span>
         ${c.bonusDelayed ? '<span style="font-size:9px;color:#f0c04066;margin-left:6px">bonus delayed</span>' : ''}
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0;">
@@ -2603,9 +2632,21 @@ function saveCard() {
 function addNewCard() { saveCard(); } // alias kept for safety
 
 function deleteCard(id) {
-  if (!confirm('Delete card?')) return;
-  cards = cards.filter(c=>c.id!==id);
-  save(); renderCardList(); render();
+  openDeleteCardConfirm(id);
+}
+function openDeleteCardConfirm(id) {
+  const c = cards.find(x=>x.id===id);
+  if (!c) return;
+  document.getElementById('reset-title').textContent = 'Delete ' + c.name + '?';
+  document.getElementById('reset-desc').textContent  = 'This will remove the card. Transactions using this card are kept.';
+  const btn = document.getElementById('reset-confirm-btn');
+  btn.textContent = 'Yes, Delete';
+  btn.onclick = () => {
+    cards = cards.filter(x=>x.id!==id);
+    save(); renderCardList(); renderPresetList(); render();
+    closeSheet('confirm-reset-sheet');
+  };
+  openSheet('confirm-reset-sheet');
 }
 
 function populateSelect(selId, selected) {
@@ -3099,10 +3140,15 @@ const firebaseConfig = {
   appId:             "1:785844337753:web:4d1d138e2c154f34000548"
 };
 
-// Initialise Firebase
-firebase.initializeApp(firebaseConfig);
-const fbAuth = firebase.auth();
-const fbDb   = firebase.database();
+// Initialise Firebase (only if SDK loaded — won't be available when opening as local file)
+let fbAuth = null, fbDb = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  fbAuth = firebase.auth();
+  fbDb   = firebase.database();
+} catch(e) {
+  console.warn('Firebase init failed (SDK not loaded?):', e.message);
+}
 
 let fbUser         = null;
 let fbListener     = null; // active realtime listener
@@ -3137,7 +3183,7 @@ function buildSyncPayload() {
 
 // ── Write to Firebase ──
 function fbWrite() {
-  if (!fbUser) return;
+  if (!fbUser || !fbDb) return;
   fbWriting = true;
   setSyncIndicator('syncing');
   const payload = buildSyncPayload();
@@ -3172,6 +3218,7 @@ function applyRemote(remote) {
 
 // ── Start realtime listener ──
 function fbStartListener() {
+  if (!fbDb) return;
   if (fbListener) { fbListener(); fbListener = null; } // detach old listener
   fbListener = fbDb.ref('data').on('value', snapshot => {
     const remote = snapshot.val();
@@ -3198,6 +3245,7 @@ function fbStopListener() {
 
 // ── Sign in with Google ──
 function fbSignIn() {
+  if (!fbAuth) { setFbStatus('Firebase not available — open via GitHub Pages URL', '#ff6b6b'); return; }
   const provider = new firebase.auth.GoogleAuthProvider();
   fbAuth.signInWithPopup(provider)
     .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
@@ -3210,7 +3258,7 @@ function fbSignOut() {
 }
 
 // ── Auth state listener ──
-fbAuth.onAuthStateChanged(user => {
+if (fbAuth) fbAuth.onAuthStateChanged(user => {
   fbUser = user;
   const signedOut = document.getElementById('fb-signed-out');
   const signedIn  = document.getElementById('fb-signed-in');
