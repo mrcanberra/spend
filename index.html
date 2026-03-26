@@ -63,17 +63,20 @@ html, body {
 .cap-panel {
   background: #161616;
   border-bottom: 1px solid #2a2a2a;
-  padding: 8px 14px 6px;
+  padding: 8px 0 6px;  /* remove horizontal padding — handled per-row */
+}
+.cap-panel-header {
+  padding: 0 14px 5px;
 }
 .cap-panel-chips {
   display: flex; flex-wrap: nowrap; gap: 5px; margin-bottom: 6px;
-  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  overflow-x: scroll; -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  /* Escape parent padding so scroll reaches full width on Safari iOS */
-  margin-left: -14px; margin-right: -14px;
-  padding-left: 14px; padding-right: 14px;
+  padding: 2px 14px 2px 14px;  /* inner padding so chips don't clip */
+  width: 100%; box-sizing: border-box;
 }
 .cap-panel-chips::-webkit-scrollbar { display: none; }
+.cap-bars-wrap { padding: 0 14px; }
 .legend-chip {
   font-size: 9px; padding: 2px 0; border-radius: 4px; font-weight: 700;
   cursor: pointer; flex-shrink: 0; flex: 0 0 auto;
@@ -341,7 +344,7 @@ html, body {
   </div>
 
   <div class="cap-panel" id="cap-panel">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+    <div class="cap-panel-header" style="display:flex;align-items:center;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:6px;">
         <span id="cap-month-label" style="font-size:11px;font-weight:700;color:#888;"></span>
         <span style="font-size:9px;color:#333;padding:1px 5px;background:#1e1e1e;border-radius:3px;cursor:pointer;" id="cap-today-btn" onclick="capGoToday()" title="Back to current month">●</span>
@@ -352,7 +355,7 @@ html, body {
       </div>
     </div>
     <div class="cap-panel-chips" id="card-chips"></div>
-    <div id="cap-bars"></div>
+    <div class="cap-bars-wrap"><div id="cap-bars"></div></div>
   </div>
 
   <!-- PENDING -->
@@ -742,7 +745,7 @@ html, body {
     </div>
 
     <div style="padding:10px 16px 4px;">
-      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.4.0</div>
+      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.5.0</div>
     </div>
     <button class="sheet-btn-ghost" onclick="closeSheet('settings-sheet')">Close</button>
   </div>
@@ -3263,15 +3266,24 @@ function fbStopListener() {
 function fbSignIn() {
   if (!fbAuth) { setFbStatus('Open via GitHub Pages URL to use sync.', '#ff6b6b'); return; }
   const provider = new firebase.auth.GoogleAuthProvider();
-  // Use redirect on mobile Safari (popup blocked), popup on desktop
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (isMobile) {
-    fbAuth.signInWithRedirect(provider)
-      .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
-  } else {
-    fbAuth.signInWithPopup(provider)
-      .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
-  }
+  setFbStatus('Opening Google sign-in...', '#6bc5ff');
+  // Always try popup first — works on Mac and mobile Safari browser
+  // For standalone (home screen) web app, redirect is required
+  fbAuth.signInWithPopup(provider)
+    .then(() => setFbStatus('', ''))
+    .catch(e => {
+      // If popup blocked/failed, fall back to redirect
+      if (e.code === 'auth/popup-blocked' ||
+          e.code === 'auth/popup-closed-by-user' ||
+          e.code === 'auth/cancelled-popup-request' ||
+          e.message.includes('Cross-Origin')) {
+        setFbStatus('Trying redirect sign-in...', '#f0c040');
+        fbAuth.signInWithRedirect(provider)
+          .catch(e2 => setFbStatus('Sign in failed: ' + e2.message, '#ff6b6b'));
+      } else {
+        setFbStatus('Sign in failed: ' + e.message, '#ff6b6b');
+      }
+    });
 }
 function fbSignOut() {
   fbStopListener();
