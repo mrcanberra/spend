@@ -68,8 +68,10 @@ html, body {
 .cap-panel-chips {
   display: flex; flex-wrap: nowrap; gap: 5px; margin-bottom: 6px;
   overflow-x: auto; -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Firefox */
-  padding-right: 16px; /* prevents last chip from being clipped */
+  scrollbar-width: none;
+  /* Escape parent padding so scroll reaches full width on Safari iOS */
+  margin-left: -14px; margin-right: -14px;
+  padding-left: 14px; padding-right: 14px;
 }
 .cap-panel-chips::-webkit-scrollbar { display: none; }
 .legend-chip {
@@ -740,7 +742,7 @@ html, body {
     </div>
 
     <div style="padding:10px 16px 4px;">
-      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.3.0</div>
+      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.4.0</div>
     </div>
     <button class="sheet-btn-ghost" onclick="closeSheet('settings-sheet')">Close</button>
   </div>
@@ -3261,8 +3263,15 @@ function fbStopListener() {
 function fbSignIn() {
   if (!fbAuth) { setFbStatus('Open via GitHub Pages URL to use sync.', '#ff6b6b'); return; }
   const provider = new firebase.auth.GoogleAuthProvider();
-  fbAuth.signInWithPopup(provider)
-    .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
+  // Use redirect on mobile Safari (popup blocked), popup on desktop
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    fbAuth.signInWithRedirect(provider)
+      .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
+  } else {
+    fbAuth.signInWithPopup(provider)
+      .catch(e => setFbStatus('Sign in failed: ' + e.message, '#ff6b6b'));
+  }
 }
 function fbSignOut() {
   fbStopListener();
@@ -3270,6 +3279,12 @@ function fbSignOut() {
 }
 
 // ── Auth state ──
+// Handle redirect result (mobile sign-in)
+if (fbAuth) {
+  fbAuth.getRedirectResult()
+    .catch(e => { if (e.code !== 'auth/no-current-user') setFbStatus('Sign in error: ' + e.message, '#ff6b6b'); });
+}
+
 if (fbAuth) fbAuth.onAuthStateChanged(user => {
   fbUser = user;
   const signedOut = document.getElementById('fb-signed-out');
