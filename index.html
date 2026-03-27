@@ -10,10 +10,6 @@
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
-:root {
-  --locked-top-height: 0px;
-}
-
 html, body {
   overscroll-behavior-x: none;
   overflow-x: hidden;
@@ -23,6 +19,7 @@ html, body {
   font-family: -apple-system, 'SF Pro Text', sans-serif;
   font-size: 14px;
   min-height: 100vh;
+  height: 100vh;
 }
 
 /* TOP BAR */
@@ -64,12 +61,8 @@ html, body {
 
 /* CARD CAP PANEL */
 .main-locked-top {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 120;
   background: #111;
+  flex-shrink: 0;
 }
 .cap-panel {
   background: #161616;
@@ -136,7 +129,7 @@ html, body {
   background: #1a1a1a;
   border-top: 2px solid #2a2a2a; border-bottom: 1px solid #2a2a2a;
   cursor: pointer; user-select: none;
-  position: sticky; top: var(--locked-top-height); z-index: 90;
+  position: sticky; top: 0; z-index: 90;
 }
 .bucket-section { position: relative; }
 .bh-left { display: flex; align-items: center; gap: 8px; }
@@ -322,7 +315,21 @@ html, body {
 .bonus-row:active { background:#1c1c1c; }
 .bonus-received { opacity:0.4; }
 
-#main-view { padding-top: var(--locked-top-height); padding-bottom:50px; }
+#main-view {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.main-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 50px;
+  background: #111;
+}
 </style>
 </head>
 <body>
@@ -373,49 +380,51 @@ html, body {
     </div>
   </div>
 
-  <!-- PENDING -->
-  <div class="bucket-section" id="section-pending">
-    <div class="bucket-header" onclick="toggleBucket('pending')">
-      <div class="bh-left">
-        <span class="bucket-title bt-pending">Pending</span>
-        <span class="bucket-count" id="cnt-pending">0</span>
+  <div class="main-scroll" id="main-scroll">
+    <!-- PENDING -->
+    <div class="bucket-section" id="section-pending">
+      <div class="bucket-header" onclick="toggleBucket('pending')">
+        <div class="bh-left">
+          <span class="bucket-title bt-pending">Pending</span>
+          <span class="bucket-count" id="cnt-pending">0</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="bucket-total" id="tot-pending"></span>
+          <span class="chevron open" id="chev-pending">▼</span>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <span class="bucket-total" id="tot-pending"></span>
-        <span class="chevron open" id="chev-pending">▼</span>
-      </div>
+      <div class="txn-list" id="list-pending"></div>
     </div>
-    <div class="txn-list" id="list-pending"></div>
-  </div>
 
-  <!-- UPCOMING -->
-  <div class="bucket-section" id="section-upcoming">
-    <div class="bucket-header" onclick="toggleBucket('upcoming')">
-      <div class="bh-left">
-        <span class="bucket-title bt-upcoming">Upcoming</span>
-        <span class="bucket-count" id="cnt-upcoming">0</span>
+    <!-- UPCOMING -->
+    <div class="bucket-section" id="section-upcoming">
+      <div class="bucket-header" onclick="toggleBucket('upcoming')">
+        <div class="bh-left">
+          <span class="bucket-title bt-upcoming">Upcoming</span>
+          <span class="bucket-count" id="cnt-upcoming">0</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="bucket-total" id="tot-upcoming"></span>
+          <span class="chevron open" id="chev-upcoming">▼</span>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <span class="bucket-total" id="tot-upcoming"></span>
-        <span class="chevron open" id="chev-upcoming">▼</span>
-      </div>
+      <div class="txn-list" id="list-upcoming"></div>
     </div>
-    <div class="txn-list" id="list-upcoming"></div>
-  </div>
 
-  <!-- POSTED -->
-  <div class="bucket-section" id="section-posted">
-    <div class="bucket-header" onclick="toggleBucket('posted')">
-      <div class="bh-left">
-        <span class="bucket-title bt-posted">Posted</span>
-        <span class="bucket-count" id="cnt-posted">0</span>
+    <!-- POSTED -->
+    <div class="bucket-section" id="section-posted">
+      <div class="bucket-header" onclick="toggleBucket('posted')">
+        <div class="bh-left">
+          <span class="bucket-title bt-posted">Posted</span>
+          <span class="bucket-count" id="cnt-posted">0</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="bucket-total" id="tot-posted"></span>
+          <span class="chevron open" id="chev-posted">▼</span>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <span class="bucket-total" id="tot-posted"></span>
-        <span class="chevron open" id="chev-posted">▼</span>
-      </div>
+      <div class="txn-list" id="list-posted"></div>
     </div>
-    <div class="txn-list" id="list-posted"></div>
   </div>
 
 </div><!-- /main-view -->
@@ -1140,12 +1149,6 @@ function fmtDate(str) {
 
 function isOverdue(ds) { return ds && ds < localDateStr(); }
 
-function updateStickyOffsets() {
-  const lockedTop = document.getElementById('main-locked-top');
-  const height = lockedTop ? lockedTop.offsetHeight : 0;
-  document.documentElement.style.setProperty('--locked-top-height', height + 'px');
-}
-
 // ══ RENDER ══
 function render() {
   renderLegend();
@@ -1154,7 +1157,6 @@ function render() {
   renderBucket('posted');
   renderSummary();
   updateBonusBadge();
-  updateStickyOffsets();
 }
 
 function renderSummary() {
@@ -1379,7 +1381,6 @@ function renderCapPanel() {
 
   if (!cards.length) {
     chipsEl.innerHTML = '<span style="font-size:10px;color:#666;cursor:pointer;" onclick="openSettingsSheet()">+ Add your first card via Settings ⚙</span>';
-    updateStickyOffsets();
     return;
   }
 
@@ -2907,7 +2908,6 @@ function showMain() {
   document.getElementById('archive-view').style.display = 'none';
   document.getElementById('insights-view').style.display   = 'none';
   document.getElementById('main-view').style.display    = 'block';
-  updateStickyOffsets();
 }
 
 function renderBonusDue() {
@@ -3357,7 +3357,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.8.0';
+const APP_VERSION = 'v2.9.0';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3520,7 +3520,6 @@ function fbSignIn() {
         setFbStatus('Sign in failed: ' + e.message, '#ff6b6b');
     }
   });
-  updateStickyOffsets();
 }
 function fbSignOut() {
   fbStopListener();
@@ -3562,7 +3561,6 @@ if (fbAuth) fbAuth.onAuthStateChanged(user => {
 // ── Connectivity ──
 window.addEventListener('offline', () => setSyncIndicator('offline'));
 window.addEventListener('online',  () => { if (fbUser) setSyncIndicator('synced'); });
-window.addEventListener('resize', updateStickyOffsets);
 
 // ══ INIT ══
 // Migration: patch any saved card that is missing fields added after initial save
