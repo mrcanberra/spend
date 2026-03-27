@@ -1646,7 +1646,13 @@ function makeStatusSelect(txnId, currentStatus) {
   sel.onchange = e => {
     e.stopPropagation();
     const t = txns.find(x => x.id === txnId);
-    if (t) { t.status = sel.value; save(); renderSummary(); }
+    if (t) {
+      t.status = sel.value;
+      touchRecord(t);
+      save();
+      renderBucket(t.bucket);
+      renderSummary();
+    }
     applyStyle(sel.value);
   };
   sel.onclick = e => e.stopPropagation(); // prevent row tap
@@ -3321,7 +3327,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.6.1';
+const APP_VERSION = 'v2.6.2';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
