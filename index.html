@@ -790,6 +790,104 @@ const CCY_SYM  = { SGD:'$', MYR:'RM ', JPY:'¥', HKD:'HK$', MOP:'MOP$', THB:'฿
 const CCY_FLAG = { MYR:'🇲🇾', JPY:'🇯🇵', HKD:'🇭🇰', MOP:'🇲🇴', THB:'🇹🇭', EUR:'🇪🇺', USD:'🇺🇸', SGD:'🇸🇬' };
 const FCY_LIST = ['MYR','JPY','HKD','MOP','THB','EUR','USD'];
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function makeId(prefix) {
+  const head = prefix || '';
+  return head + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function touchRecord(record) {
+  if (!record) return record;
+  const stamp = nowIso();
+  if (!record.createdAt) record.createdAt = stamp;
+  record.updatedAt = stamp;
+  return record;
+}
+
+function getRecordStamp(record) {
+  if (!record) return 0;
+  const raw = record.updatedAt || record.archivedAt || record.receivedAt || record.createdAt || record.savedAt || 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function mergeById(existing, incoming) {
+  const map = new Map();
+  [...(existing || []), ...(incoming || [])].forEach(item => {
+    if (!item || !item.id) return;
+    const prev = map.get(item.id);
+    if (!prev || getRecordStamp(item) >= getRecordStamp(prev)) {
+      map.set(item.id, item);
+    }
+  });
+  return [...map.values()];
+}
+
+function getSyncState() {
+  return {
+    cards: [...cards],
+    txns: [...txns],
+    archived: [...archived],
+    bonusDue: [...bonusDue],
+  };
+}
+
+function parseCloudState(data) {
+  return {
+    cards: JSON.parse(data?.cards || '[]'),
+    txns: JSON.parse(data?.txns || '[]'),
+    archived: JSON.parse(data?.archived || '[]'),
+    bonusDue: JSON.parse(data?.bonusDue || '[]'),
+  };
+}
+
+function mergeSyncStates(localState, remoteState) {
+  const localArchivedTxns  = (localState.archived || []).filter(x => !x.isBonusRecord);
+  const remoteArchivedTxns = (remoteState.archived || []).filter(x => !x.isBonusRecord);
+  const localArchivedBonus  = (localState.archived || []).filter(x => x.isBonusRecord);
+  const remoteArchivedBonus = (remoteState.archived || []).filter(x => x.isBonusRecord);
+
+  const mergedCards = mergeById(localState.cards, remoteState.cards);
+  const mergedTxnPool = mergeById(
+    [...(localState.txns || []), ...localArchivedTxns],
+    [...(remoteState.txns || []), ...remoteArchivedTxns]
+  );
+  const mergedBonusPool = mergeById(
+    [...(localState.bonusDue || []), ...localArchivedBonus],
+    [...(remoteState.bonusDue || []), ...remoteArchivedBonus]
+  );
+
+  const mergedTxns = mergedTxnPool.filter(t => !t.archivedAt);
+  const mergedArchivedTxns = mergedTxnPool.filter(t => !!t.archivedAt);
+  const mergedBonusDue = mergedBonusPool.filter(b => !b.isBonusRecord && !b.receivedAt && !b.received);
+  const mergedArchivedBonus = mergedBonusPool.filter(b => b.isBonusRecord || b.receivedAt || b.received);
+
+  return {
+    cards: mergedCards,
+    txns: mergedTxns,
+    archived: [...mergedArchivedTxns, ...mergedArchivedBonus],
+    bonusDue: mergedBonusDue,
+  };
+}
+
+function applySyncState(state, shouldRender) {
+  cards    = state.cards || [];
+  txns     = state.txns || [];
+  archived = state.archived || [];
+  bonusDue = state.bonusDue || [];
+
+  runMigrations(true);
+
+  localStorage.setItem('st_cards',    JSON.stringify(cards));
+  localStorage.setItem('st_txns',     JSON.stringify(txns));
+  localStorage.setItem('st_archive',  JSON.stringify(archived));
+  localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
+  if (shouldRender !== false) render();
+}
+
 function save() {
   localStorage.setItem('st_cards',    JSON.stringify(cards));
   localStorage.setItem('st_txns',     JSON.stringify(txns));
@@ -1886,7 +1984,7 @@ function submitAdd() {
   const tag = document.getElementById('add-tag').value || 'Others';
 
   txns.push({
-    id:         Date.now().toString(),
+    id:         makeId('txn_'),
     bucket:     addBucket,
     cardId,
     amount,
@@ -1896,7 +1994,8 @@ function submitAdd() {
     category,
     tag,
     note,
-    createdAt:  new Date().toISOString(),
+    createdAt:  nowIso(),
+    updatedAt:  nowIso(),
   });
   clearDraft();
   save(); render(); closeSheet('add-sheet');
@@ -1910,6 +2009,7 @@ function cycleStatus(id) {
   // Ensure status is initialised (posted txns may have come from pending with a status)
   if (!t.status) t.status = 'notpaid';
   t.status = CYCLE[t.status] || 'notpaid';
+  touchRecord(t);
   save();
   renderBucket('pending');
   renderBucket('posted');
@@ -1954,7 +2054,7 @@ function openActionSheet(id) {
       // Step 2: archive (only available after points verified)
       opt('📁 Archive Transaction', 'go', ()=>{ closeSheet('action-sheet'); openArchiveStep(id); });
       opt('↩ Unmark Points (re-check)', '', ()=>{
-        t.pointsVerified = false; save(); render(); closeSheet('action-sheet');
+        t.pointsVerified = false; touchRecord(t); save(); render(); closeSheet('action-sheet');
       });
     }
     opt('← Move back to Pending', '', ()=>{ moveTo(id,'pending'); closeSheet('action-sheet'); });
@@ -1979,6 +2079,7 @@ function markPointsVerified(id) {
     return;
   }
   t.pointsVerified = true;
+  touchRecord(t);
   save(); render();
 }
 
@@ -2079,6 +2180,7 @@ function openVerifySheet(id) {
     } else {
       t.pointsVerified = true;
     }
+    touchRecord(t);
     save(); render();
     closeSheet('action-sheet');
   };
@@ -2149,6 +2251,7 @@ function doArchive(id, finalPts) {
 
   t.archivedAt = new Date().toISOString();
   t.finalPts   = finalPts || 0;
+  touchRecord(t);
 
   // Push to archived FIRST so getBonusThisPeriod can find this txn's position in FIFO order
   // (it needs selfTxn in [...txns, ...archived] to find createdAt and stop accumulation)
@@ -2175,15 +2278,17 @@ function doArchive(id, finalPts) {
             : card.capSpend * (card.bonusRate || 0))
         : Infinity;
       existing.bonusPts = Math.min(existing.bonusPts + bonusPtsForDue, maxBonus);
+      touchRecord(existing);
     } else {
       bonusDue.push({
-        id:        'bd_' + Date.now().toString(),
+        id:        makeId('bd_'),
         cardId:    t.cardId,
         cardName:  card.name,
         bonusPts:  bonusPtsForDue,
         dueMonth:  dueLabel,
         dueDate:   dueMonth.toISOString(),
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
         received:  false,
       });
     }
@@ -2238,15 +2343,17 @@ function recalcSigBonusDue(card) {
   if (totalBonusPts > 0) {
     if (existing) {
       existing.bonusPts = totalBonusPts; // update with latest calculation
+      touchRecord(existing);
     } else {
       bonusDue.push({
-        id:        'bd_' + Date.now().toString(),
+        id:        makeId('bd_'),
         cardId:    card.id,
         cardName:  card.name,
         bonusPts:  totalBonusPts,
         dueMonth:  dueLabel,
         dueDate:   dueDate,
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
         received:  false,
       });
     }
@@ -2266,6 +2373,7 @@ function moveTo(id, bucket) {
   t.bucket = bucket;
   if (bucket==='pending')  { t.status = t.status || 'notpaid'; } // keep existing status if already set
   if (bucket==='upcoming') { t.status = null; }
+  touchRecord(t);
   // posted: keep whatever status the txn already has (Not Paid / Paid / Received)
   save(); render();
 }
@@ -2297,6 +2405,7 @@ function openPostedDateSheet(id) {
     const pd = document.getElementById('posted-date-input').value;
     t.bucket   = 'posted';
     t.postedAt = pd ? (pd + 'T00:00:00.000Z') : new Date().toISOString();
+    touchRecord(t);
     save(); render();
     closeSheet('action-sheet');
   };
@@ -2373,6 +2482,7 @@ function submitEdit() {
   } else {
     t.wasFcy = false; // clear if currency changed back to FCY
   }
+  touchRecord(t);
   save(); render(); closeSheet('edit-sheet');
 }
 
@@ -2520,7 +2630,7 @@ function renderPresetList() {
 function addPreset(presetId) {
   const p = CARD_PRESETS.find(x => x.id === presetId);
   if (!p || cards.some(c => c.id === p.id)) return;
-  cards.push({ ...p });
+  cards.push(touchRecord({ ...p }));
   save();
   renderCardList();
   renderPresetList();
@@ -2624,9 +2734,9 @@ function saveCard() {
   if (editId) {
     // Update existing
     const idx = cards.findIndex(c => c.id === editId);
-    if (idx >= 0) cards[idx] = { ...cards[idx], ...cardData };
+    if (idx >= 0) cards[idx] = touchRecord({ ...cards[idx], ...cardData });
   } else {
-    cards.push({ id: Date.now().toString(), ...cardData });
+    cards.push(touchRecord({ id: makeId('card_'), ...cardData }));
   }
 
   save();
@@ -2800,8 +2910,9 @@ function openBonusDueAction(id) {
       ...b,
       received:   true,
       receivedPts: actual,
-      receivedAt:  new Date().toISOString(),
+      receivedAt:  nowIso(),
       isBonusRecord: true,  // flag to distinguish from transaction records
+      updatedAt:   nowIso(),
     });
     save();
     renderBonusDue();
@@ -3135,7 +3246,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.3.0';
+const APP_VERSION = 'v2.3.1';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3187,22 +3298,32 @@ function scheduleWrite() {
 
 async function doWrite() {
   if (!fbUser || !fbDb) return;
+  fbWriteTimer = null;
   try {
+    const ref = fbDb.collection('users').doc(fbUser.uid);
+    const remoteSnap = await ref.get();
+    const mergedState = remoteSnap.exists
+      ? mergeSyncStates(getSyncState(), parseCloudState(remoteSnap.data()))
+      : getSyncState();
+    applySyncState(mergedState, false);
+
     const payload = {
       savedAt:  firebase.firestore.FieldValue.serverTimestamp(),
       savedBy:  fbUser.uid,
-      cards:    JSON.stringify(cards),
-      txns:     JSON.stringify(txns),
-      archived: JSON.stringify(archived),
-      bonusDue: JSON.stringify(bonusDue),
+      cards:    JSON.stringify(mergedState.cards),
+      txns:     JSON.stringify(mergedState.txns),
+      archived: JSON.stringify(mergedState.archived),
+      bonusDue: JSON.stringify(mergedState.bonusDue),
     };
-    await fbDb.collection('users').doc(fbUser.uid).set(payload, { merge: true });
+    await ref.set(payload, { merge: true });
     fbWritePending = false;
     setSyncIndicator('synced');
   } catch(e) {
     console.warn('Firestore write failed:', e);
     setSyncIndicator('pending');
     setFbStatus('Write error: ' + e.message, '#ff6b6b');
+  } finally {
+    fbWriteTimer = null;
   }
 }
 
@@ -3224,30 +3345,16 @@ function fbStartListener() {
 
       const d = snap.data();
       try {
-        const remoteCards    = JSON.parse(d.cards    || '[]');
-        const remoteTxns     = JSON.parse(d.txns     || '[]');
-        const remoteArchived = JSON.parse(d.archived || '[]');
-        const remoteBonusDue = JSON.parse(d.bonusDue || '[]');
+        const remoteState = parseCloudState(d);
 
         // Only apply if remote has data worth applying
-        const remoteCount = remoteTxns.length + remoteArchived.length + remoteCards.length;
+        const remoteCount = remoteState.txns.length + remoteState.archived.length + remoteState.cards.length;
         const localCount  = txns.length + archived.length + cards.length;
 
         if (remoteCount === 0 && localCount > 0) return; // ignore empty remote
 
-        cards    = remoteCards;
-        txns     = remoteTxns;
-        archived = remoteArchived;
-        bonusDue = remoteBonusDue;
-
-        // Sync to localStorage quietly
-        localStorage.setItem('st_cards',    d.cards    || '[]');
-        localStorage.setItem('st_txns',     d.txns     || '[]');
-        localStorage.setItem('st_archive',  d.archived || '[]');
-        localStorage.setItem('st_bonusdue', d.bonusDue || '[]');
-
-        runMigrations();
-        render();
+        const mergedState = mergeSyncStates(getSyncState(), remoteState);
+        applySyncState(mergedState, true);
         setSyncIndicator('synced');
       } catch(e) {
         console.warn('Firestore parse error:', e);
@@ -3377,10 +3484,12 @@ if (stillInBonusDue.length) {
 }
 
 // Run on pull from cloud to re-apply migrations after remote data is loaded
-function runMigrations() {
+function runMigrations(skipSave) {
+  let changed = false;
   cards = cards.map(c => {
     const preset = CARD_PRESETS.find(p => p.id === c.id);
     if (preset) {
+      changed = true;
       return { ...preset, ...c,
         baseRate: preset.baseRate, bonusRate: preset.bonusRate,
         bonusRateHidden: preset.bonusRateHidden, fcyBase: preset.fcyBase,
@@ -3392,17 +3501,18 @@ function runMigrations() {
         categories: preset.categories, minSpendUnlock: preset.minSpendUnlock,
       };
     }
-    if (c.bonusDelayed === undefined) c.bonusDelayed = false;
-    if (!c.baseRound)  c.baseRound  = 'round';
-    if (!c.bonusRound) c.bonusRound = 'floor';
+    if (c.bonusDelayed === undefined) { c.bonusDelayed = false; changed = true; }
+    if (!c.baseRound)  { c.baseRound  = 'round'; changed = true; }
+    if (!c.bonusRound) { c.bonusRound = 'floor'; changed = true; }
     return c;
   });
   const stillInBonusDue = bonusDue.filter(b => b.received);
   if (stillInBonusDue.length) {
+    changed = true;
     stillInBonusDue.forEach(b => archived.push({ ...b, isBonusRecord: true, receivedAt: b.receivedAt || b.createdAt }));
     bonusDue = bonusDue.filter(b => !b.received);
   }
-  save();
+  if (changed && !skipSave) save();
 }
 
 render();
