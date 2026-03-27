@@ -2907,7 +2907,7 @@ function showInsights() {
 function showMain() {
   document.getElementById('archive-view').style.display = 'none';
   document.getElementById('insights-view').style.display   = 'none';
-  document.getElementById('main-view').style.display    = 'block';
+  document.getElementById('main-view').style.display    = 'flex';
 }
 
 function renderBonusDue() {
@@ -3357,7 +3357,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.9.0';
+const APP_VERSION = 'v2.9.1';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
