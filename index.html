@@ -64,8 +64,10 @@ html, body {
 
 /* CARD CAP PANEL */
 .main-locked-top {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 120;
   background: #111;
 }
@@ -136,6 +138,7 @@ html, body {
   cursor: pointer; user-select: none;
   position: sticky; top: var(--locked-top-height); z-index: 90;
 }
+.bucket-section { position: relative; }
 .bh-left { display: flex; align-items: center; gap: 8px; }
 .bucket-title { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; }
 .bt-pending  { color: #ff9f6b; }
@@ -319,7 +322,7 @@ html, body {
 .bonus-row:active { background:#1c1c1c; }
 .bonus-received { opacity:0.4; }
 
-#main-view { padding-bottom:50px; }
+#main-view { padding-top: var(--locked-top-height); padding-bottom:50px; }
 </style>
 </head>
 <body>
@@ -371,43 +374,49 @@ html, body {
   </div>
 
   <!-- PENDING -->
-  <div class="bucket-header" onclick="toggleBucket('pending')">
-    <div class="bh-left">
-      <span class="bucket-title bt-pending">Pending</span>
-      <span class="bucket-count" id="cnt-pending">0</span>
+  <div class="bucket-section" id="section-pending">
+    <div class="bucket-header" onclick="toggleBucket('pending')">
+      <div class="bh-left">
+        <span class="bucket-title bt-pending">Pending</span>
+        <span class="bucket-count" id="cnt-pending">0</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="bucket-total" id="tot-pending"></span>
+        <span class="chevron open" id="chev-pending">▼</span>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px">
-      <span class="bucket-total" id="tot-pending"></span>
-      <span class="chevron open" id="chev-pending">▼</span>
-    </div>
+    <div class="txn-list" id="list-pending"></div>
   </div>
-  <div class="txn-list" id="list-pending"></div>
 
   <!-- UPCOMING -->
-  <div class="bucket-header" onclick="toggleBucket('upcoming')">
-    <div class="bh-left">
-      <span class="bucket-title bt-upcoming">Upcoming</span>
-      <span class="bucket-count" id="cnt-upcoming">0</span>
+  <div class="bucket-section" id="section-upcoming">
+    <div class="bucket-header" onclick="toggleBucket('upcoming')">
+      <div class="bh-left">
+        <span class="bucket-title bt-upcoming">Upcoming</span>
+        <span class="bucket-count" id="cnt-upcoming">0</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="bucket-total" id="tot-upcoming"></span>
+        <span class="chevron open" id="chev-upcoming">▼</span>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px">
-      <span class="bucket-total" id="tot-upcoming"></span>
-      <span class="chevron open" id="chev-upcoming">▼</span>
-    </div>
+    <div class="txn-list" id="list-upcoming"></div>
   </div>
-  <div class="txn-list" id="list-upcoming"></div>
 
   <!-- POSTED -->
-  <div class="bucket-header" onclick="toggleBucket('posted')">
-    <div class="bh-left">
-      <span class="bucket-title bt-posted">Posted</span>
-      <span class="bucket-count" id="cnt-posted">0</span>
+  <div class="bucket-section" id="section-posted">
+    <div class="bucket-header" onclick="toggleBucket('posted')">
+      <div class="bh-left">
+        <span class="bucket-title bt-posted">Posted</span>
+        <span class="bucket-count" id="cnt-posted">0</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="bucket-total" id="tot-posted"></span>
+        <span class="chevron open" id="chev-posted">▼</span>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px">
-      <span class="bucket-total" id="tot-posted"></span>
-      <span class="chevron open" id="chev-posted">▼</span>
-    </div>
+    <div class="txn-list" id="list-posted"></div>
   </div>
-  <div class="txn-list" id="list-posted"></div>
 
 </div><!-- /main-view -->
 
@@ -3348,7 +3357,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.7.0';
+const APP_VERSION = 'v2.8.0';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
