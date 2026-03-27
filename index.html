@@ -3321,7 +3321,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.6.0';
+const APP_VERSION = 'v2.6.1';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3378,6 +3378,7 @@ function scheduleWrite() {
 async function doWrite() {
   if (!fbUser || !fbDb) return;
   fbWriteTimer = null;
+  let didSucceed = false;
   try {
     const ref = fbDb.collection('users').doc(fbUser.uid);
     const shouldForceOverwrite = fbForceOverwriteNextWrite;
@@ -3403,6 +3404,7 @@ async function doWrite() {
     };
     await ref.set(payload, { merge: true });
     fbForceOverwriteNextWrite = false;
+    didSucceed = true;
     fbWritePending = false;
     setSyncIndicator('synced');
   } catch(e) {
@@ -3411,6 +3413,10 @@ async function doWrite() {
     setFbStatus('Write error: ' + e.message, '#ff6b6b');
   } finally {
     fbWriteTimer = null;
+    if (!fbWriteTimer) fbWritePending = false;
+    if (!didSucceed && fbUser && !fbWriteTimer) {
+      setSyncIndicator(navigator.onLine ? 'pending' : 'offline');
+    }
   }
 }
 
