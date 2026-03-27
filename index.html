@@ -3131,6 +3131,7 @@ function bgClose(e,id)  { if (e.target===document.getElementById(id)) closeSheet
 let _tx=0, _ty=0;
 document.addEventListener('touchstart', e=>{ _tx=e.touches[0].clientX; _ty=e.touches[0].clientY; }, {passive:true});
 document.addEventListener('touchmove', e=>{
+  if (e.target && e.target.closest && e.target.closest('#card-chips')) return;
   if (Math.abs(e.touches[0].clientX-_tx) > Math.abs(e.touches[0].clientY-_ty)) e.preventDefault();
 }, {passive:false});
 
@@ -3246,7 +3247,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.3.1';
+const APP_VERSION = 'v2.3.2';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
