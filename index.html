@@ -781,6 +781,7 @@ let capMonthOffset = 0;
 let bonusDue = JSON.parse(localStorage.getItem('st_bonusdue') || '[]');
 // Selected card filter for cap panel (null = show all)
 let selectedCapCardId = null;
+let syncDeletes = JSON.parse(localStorage.getItem('st_sync_deletes') || '{"cards":[],"records":[],"bonusDue":[]}');
 
 // FX rates cache: { MYR: 0.30, JPY: 0.0089, ... } rates TO SGD
 let fxRates = JSON.parse(localStorage.getItem('st_fxrates') || '{}');
@@ -826,12 +827,64 @@ function mergeById(existing, incoming) {
   return [...map.values()];
 }
 
+function normalizeDeleteStore(store) {
+  const next = store && typeof store === 'object' ? store : {};
+  return {
+    cards: Array.isArray(next.cards) ? next.cards : [],
+    records: Array.isArray(next.records) ? next.records : [],
+    bonusDue: Array.isArray(next.bonusDue) ? next.bonusDue : [],
+  };
+}
+
+function getDeleteStamp(entry) {
+  const raw = entry?.deletedAt || 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function mergeDeleteEntries(existing, incoming) {
+  const map = new Map();
+  [...(existing || []), ...(incoming || [])].forEach(entry => {
+    if (!entry || !entry.id) return;
+    const prev = map.get(entry.id);
+    if (!prev || getDeleteStamp(entry) >= getDeleteStamp(prev)) {
+      map.set(entry.id, entry);
+    }
+  });
+  return [...map.values()];
+}
+
+function mergeDeleteStores(localStore, remoteStore) {
+  const local = normalizeDeleteStore(localStore);
+  const remote = normalizeDeleteStore(remoteStore);
+  return {
+    cards: mergeDeleteEntries(local.cards, remote.cards),
+    records: mergeDeleteEntries(local.records, remote.records),
+    bonusDue: mergeDeleteEntries(local.bonusDue, remote.bonusDue),
+  };
+}
+
+function markDeleted(kind, ids) {
+  const stamp = nowIso();
+  const entries = (ids || []).filter(Boolean).map(id => ({ id, deletedAt: stamp }));
+  syncDeletes = mergeDeleteStores(syncDeletes, { cards: [], records: [], bonusDue: [], [kind]: entries });
+}
+
+function applyDeleteEntries(records, deleteEntries) {
+  const deletes = new Map((deleteEntries || []).map(entry => [entry.id, getDeleteStamp(entry)]));
+  return (records || []).filter(record => {
+    const deletedAt = deletes.get(record.id);
+    return !deletedAt || getRecordStamp(record) > deletedAt;
+  });
+}
+
 function getSyncState() {
   return {
     cards: [...cards],
     txns: [...txns],
     archived: [...archived],
     bonusDue: [...bonusDue],
+    syncDeletes: normalizeDeleteStore(syncDeletes),
   };
 }
 
@@ -841,24 +894,26 @@ function parseCloudState(data) {
     txns: JSON.parse(data?.txns || '[]'),
     archived: JSON.parse(data?.archived || '[]'),
     bonusDue: JSON.parse(data?.bonusDue || '[]'),
+    syncDeletes: normalizeDeleteStore(JSON.parse(data?.syncDeletes || '{"cards":[],"records":[],"bonusDue":[]}')),
   };
 }
 
 function mergeSyncStates(localState, remoteState) {
+  const mergedDeletes = mergeDeleteStores(localState.syncDeletes, remoteState.syncDeletes);
   const localArchivedTxns  = (localState.archived || []).filter(x => !x.isBonusRecord);
   const remoteArchivedTxns = (remoteState.archived || []).filter(x => !x.isBonusRecord);
   const localArchivedBonus  = (localState.archived || []).filter(x => x.isBonusRecord);
   const remoteArchivedBonus = (remoteState.archived || []).filter(x => x.isBonusRecord);
 
-  const mergedCards = mergeById(localState.cards, remoteState.cards);
-  const mergedTxnPool = mergeById(
+  const mergedCards = applyDeleteEntries(mergeById(localState.cards, remoteState.cards), mergedDeletes.cards);
+  const mergedTxnPool = applyDeleteEntries(mergeById(
     [...(localState.txns || []), ...localArchivedTxns],
     [...(remoteState.txns || []), ...remoteArchivedTxns]
-  );
-  const mergedBonusPool = mergeById(
+  ), mergedDeletes.records);
+  const mergedBonusPool = applyDeleteEntries(mergeById(
     [...(localState.bonusDue || []), ...localArchivedBonus],
     [...(remoteState.bonusDue || []), ...remoteArchivedBonus]
-  );
+  ), mergedDeletes.bonusDue);
 
   const mergedTxns = mergedTxnPool.filter(t => !t.archivedAt);
   const mergedArchivedTxns = mergedTxnPool.filter(t => !!t.archivedAt);
@@ -870,6 +925,7 @@ function mergeSyncStates(localState, remoteState) {
     txns: mergedTxns,
     archived: [...mergedArchivedTxns, ...mergedArchivedBonus],
     bonusDue: mergedBonusDue,
+    syncDeletes: mergedDeletes,
   };
 }
 
@@ -878,6 +934,7 @@ function applySyncState(state, shouldRender) {
   txns     = state.txns || [];
   archived = state.archived || [];
   bonusDue = state.bonusDue || [];
+  syncDeletes = normalizeDeleteStore(state.syncDeletes);
 
   runMigrations(true);
 
@@ -885,6 +942,7 @@ function applySyncState(state, shouldRender) {
   localStorage.setItem('st_txns',     JSON.stringify(txns));
   localStorage.setItem('st_archive',  JSON.stringify(archived));
   localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
+  localStorage.setItem('st_sync_deletes', JSON.stringify(syncDeletes));
   if (shouldRender !== false) render();
 }
 
@@ -893,6 +951,7 @@ function save() {
   localStorage.setItem('st_txns',     JSON.stringify(txns));
   localStorage.setItem('st_archive',  JSON.stringify(archived));
   localStorage.setItem('st_bonusdue', JSON.stringify(bonusDue));
+  localStorage.setItem('st_sync_deletes', JSON.stringify(normalizeDeleteStore(syncDeletes)));
   // Schedule debounced Firestore write (batches rapid saves)
   scheduleWrite();
 }
@@ -2206,11 +2265,14 @@ function openDeleteConfirm(id, isArchive) {
   confirmBtn.textContent = '🗑 Yes, Delete';
   confirmBtn.onclick     = () => {
     if (isArchive) {
+      const target = archived.find(x => x.id === id);
+      markDeleted(target && target.isBonusRecord ? 'bonusDue' : 'records', [id]);
       archived = archived.filter(x => x.id !== id);
       save();
       closeSheet('action-sheet');
       renderArchiveList();
     } else {
+      markDeleted('records', [id]);
       txns = txns.filter(x => x.id !== id);
       save(); render();
       closeSheet('action-sheet');
@@ -2761,6 +2823,7 @@ function openDeleteCardConfirm(id) {
   const btn = document.getElementById('reset-confirm-btn');
   btn.textContent = 'Yes, Delete';
   btn.onclick = () => {
+    markDeleted('cards', [id]);
     cards = cards.filter(x=>x.id!==id);
     save(); renderCardList(); renderPresetList(); render();
     closeSheet('confirm-reset-sheet');
@@ -2925,6 +2988,7 @@ function openBonusDueAction(id) {
   dismissBtn.className   = 'sheet-option del';
   dismissBtn.textContent = '✕ Dismiss';
   dismissBtn.onclick     = () => {
+    markDeleted('bonusDue', [id]);
     bonusDue = bonusDue.filter(x => x.id !== id);
     save();
     renderBonusDue();
@@ -3152,13 +3216,23 @@ function confirmReset(type) {
   document.getElementById('reset-desc').textContent  = c.desc;
   const btn = document.getElementById('reset-confirm-btn');
   btn.onclick = () => {
+    const cardIds = cards.map(x => x.id);
+    const recordIds = [...txns, ...archived.filter(x => !x.isBonusRecord)].map(x => x.id);
+    const bonusIds = [...bonusDue, ...archived.filter(x => x.isBonusRecord)].map(x => x.id);
     if (type === 'txns') {
+      markDeleted('records', recordIds);
+      markDeleted('bonusDue', bonusIds);
       txns = []; archived = []; bonusDue = [];
     } else if (type === 'cards') {
+      markDeleted('cards', cardIds);
       cards = [];
     } else if (type === 'all') {
+      markDeleted('cards', cardIds);
+      markDeleted('records', recordIds);
+      markDeleted('bonusDue', bonusIds);
       cards = []; txns = []; archived = []; bonusDue = [];
     }
+    if (fbUser) fbForceOverwriteNextWrite = true;
     save();
     render();
     closeSheet('confirm-reset-sheet');
@@ -3247,7 +3321,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.5.1';
+const APP_VERSION = 'v2.6.0';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3259,7 +3333,7 @@ const firebaseConfig = {
 };
 
 let fbAuth = null, fbDb = null, fbUser = null, fbUnsubscribe = null;
-let fbWritePending = false, fbWriteTimer = null;
+let fbWritePending = false, fbWriteTimer = null, fbForceOverwriteNextWrite = false;
 
 try {
   firebase.initializeApp(firebaseConfig);
@@ -3306,21 +3380,29 @@ async function doWrite() {
   fbWriteTimer = null;
   try {
     const ref = fbDb.collection('users').doc(fbUser.uid);
-    const remoteSnap = await ref.get();
-    const mergedState = remoteSnap.exists
-      ? mergeSyncStates(getSyncState(), parseCloudState(remoteSnap.data()))
-      : getSyncState();
-    applySyncState(mergedState, false);
+    const shouldForceOverwrite = fbForceOverwriteNextWrite;
+    const localState = getSyncState();
+    const nextState = shouldForceOverwrite
+      ? localState
+      : await (async () => {
+          const remoteSnap = await ref.get();
+          return remoteSnap.exists
+            ? mergeSyncStates(localState, parseCloudState(remoteSnap.data()))
+            : localState;
+        })();
+    applySyncState(nextState, false);
 
     const payload = {
       savedAt:  firebase.firestore.FieldValue.serverTimestamp(),
       savedBy:  fbUser.uid,
-      cards:    JSON.stringify(mergedState.cards),
-      txns:     JSON.stringify(mergedState.txns),
-      archived: JSON.stringify(mergedState.archived),
-      bonusDue: JSON.stringify(mergedState.bonusDue),
+      cards:    JSON.stringify(nextState.cards),
+      txns:     JSON.stringify(nextState.txns),
+      archived: JSON.stringify(nextState.archived),
+      bonusDue: JSON.stringify(nextState.bonusDue),
+      syncDeletes: JSON.stringify(nextState.syncDeletes || normalizeDeleteStore(syncDeletes)),
     };
     await ref.set(payload, { merge: true });
+    fbForceOverwriteNextWrite = false;
     fbWritePending = false;
     setSyncIndicator('synced');
   } catch(e) {
