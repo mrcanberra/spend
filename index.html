@@ -745,7 +745,7 @@ html, body {
     </div>
 
     <div style="padding:10px 16px 4px;">
-      <div style="font-size:9px;color:#666;text-align:center;">Spend Tracker v2.5.0</div>
+      <div id="settings-version" style="font-size:9px;color:#666;text-align:center;">Spend Tracker</div>
     </div>
     <button class="sheet-btn-ghost" onclick="closeSheet('settings-sheet')">Close</button>
   </div>
@@ -3247,7 +3247,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.3.2';
+const APP_VERSION = 'v2.5.1';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3286,6 +3286,10 @@ function setSyncIndicator(state) {
 function setFbStatus(msg, color) {
   const el = document.getElementById('fb-status');
   if (el) { el.textContent = msg; el.style.color = color || '#888'; }
+}
+function renderAppVersion() {
+  const el = document.getElementById('settings-version');
+  if (el) el.textContent = `Spend Tracker ${APP_VERSION}`;
 }
 
 // ── Debounced write — batches rapid saves into one Firestore write ──
@@ -3516,6 +3520,7 @@ function runMigrations(skipSave) {
   if (changed && !skipSave) save();
 }
 
+renderAppVersion();
 render();
 fetchFxRates(); // fetch live FX rates on load
 
