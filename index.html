@@ -1668,10 +1668,15 @@ function renderCapPanel() {
   spacer.style.cssText = 'flex-shrink:0;width:12px;display:inline-block;';
   chipsEl.appendChild(spacer);
 
-  // ── Bar rows: show selected card only, or all if none selected ──
+  // ── Bar rows: show selected card only; empty by default until a chip is selected ──
   const visibleCards = selectedCapCardId
     ? cards.filter(c => c.id === selectedCapCardId)
-    : cards;
+    : [];
+
+  if (!visibleCards.length) {
+    barsEl.innerHTML = '<div class="empty-row" style="padding:18px 0 10px;color:#333;">Select a card above to view its progress.</div>';
+    return;
+  }
 
   visibleCards.forEach(c => {
     // For category-capped cards, render one bar per category
@@ -2474,8 +2479,13 @@ function updateQuickAddCurrency(value) {
 
 function updateQuickAddAmount(value) {
   if (!quickAddState) return;
-  quickAddState.amount = value;
+  quickAddState.amount = String(value || '').replace(/,/g, '').trim();
   if (quickAddState.step === 'amount') renderQuickAddActions('amount', cards.length > 0);
+}
+
+function syncQuickAddAmountFromInput() {
+  const input = document.getElementById('quick-add-amt');
+  updateQuickAddAmount(input ? input.value : '');
 }
 
 function quickAddAmountNext() {
@@ -2586,8 +2596,8 @@ function renderQuickAdd() {
         <select class="quick-ccy" id="quick-add-ccy" onchange="updateQuickAddCurrency(this.value)">
           ${Object.keys(CCY_SYM).map(ccy => `<option value="${ccy}" ${quickAddState.currency === ccy ? 'selected' : ''}>${ccy}</option>`).join('')}
         </select>
-        <input class="quick-amt" id="quick-add-amt" type="number" inputmode="decimal" placeholder="0.00" step="0.01"
-          value="${quickAddState.amount || ''}" oninput="updateQuickAddAmount(this.value)">
+        <input class="quick-amt" id="quick-add-amt" type="text" inputmode="decimal" placeholder="0.00"
+          value="${quickAddState.amount || ''}" oninput="syncQuickAddAmountFromInput()" onkeyup="syncQuickAddAmountFromInput()" onchange="syncQuickAddAmountFromInput()">
       </div>
     `;
     setTimeout(() => {
@@ -3934,7 +3944,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.10.0';
+const APP_VERSION = 'v2.10.1';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
