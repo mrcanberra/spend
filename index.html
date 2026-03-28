@@ -2581,7 +2581,9 @@ function submitEdit() {
     t.wasFcy = false; // clear if currency changed back to FCY
   }
   touchRecord(t);
-  save(); render(); closeSheet('edit-sheet');
+  save();
+  closeSheet('edit-sheet');
+  render();
 }
 
 // ══ PRESET CARDS ══
@@ -3357,7 +3359,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.9.1';
+const APP_VERSION = 'v2.9.2';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3401,6 +3403,12 @@ function renderAppVersion() {
   const el = document.getElementById('settings-version');
   if (el) el.textContent = `Spend Tracker ${APP_VERSION}`;
 }
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label || 'Operation timed out')), ms))
+  ]);
+}
 
 // ── Debounced write — batches rapid saves into one Firestore write ──
 function scheduleWrite() {
@@ -3422,7 +3430,7 @@ async function doWrite() {
     const nextState = shouldForceOverwrite
       ? localState
       : await (async () => {
-          const remoteSnap = await ref.get();
+          const remoteSnap = await withTimeout(ref.get(), 8000, 'Cloud read timed out');
           return remoteSnap.exists
             ? mergeSyncStates(localState, parseCloudState(remoteSnap.data()))
             : localState;
@@ -3438,10 +3446,11 @@ async function doWrite() {
       bonusDue: JSON.stringify(nextState.bonusDue),
       syncDeletes: JSON.stringify(nextState.syncDeletes || normalizeDeleteStore(syncDeletes)),
     };
-    await ref.set(payload, { merge: true });
+    await withTimeout(ref.set(payload, { merge: true }), 8000, 'Cloud write timed out');
     fbForceOverwriteNextWrite = false;
     didSucceed = true;
     fbWritePending = false;
+    setFbStatus('', '');
     setSyncIndicator('synced');
   } catch(e) {
     console.warn('Firestore write failed:', e);
