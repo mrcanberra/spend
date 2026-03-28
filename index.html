@@ -287,6 +287,232 @@ html, body {
   width:calc(100% - 32px); cursor:pointer; font-family:inherit;
 }
 
+/* QUICK ADD */
+.quick-sheet {
+  min-height: min(66vh, 560px);
+}
+.quick-shell {
+  padding: 0 18px 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: min(62vh, 520px);
+}
+.quick-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid #252525;
+}
+.quick-kicker {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+}
+.quick-step {
+  font-size: 11px;
+  color: #f0c040;
+  font-weight: 700;
+}
+.quick-body {
+  flex: 1;
+  padding: 18px 0 10px;
+}
+.quick-question {
+  font-size: 22px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 16px;
+  letter-spacing: -0.5px;
+}
+.quick-subtext {
+  font-size: 12px;
+  color: #666;
+  margin-top: -6px;
+  margin-bottom: 14px;
+}
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.quick-card {
+  min-height: 96px;
+  border-radius: 16px;
+  padding: 14px;
+  border: 1px solid #2a2a2a;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+}
+.quick-card:active { transform: scale(0.985); }
+.quick-card.selected {
+  border-color: #f0c040;
+  box-shadow: 0 0 0 1px #f0c04055, inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.quick-card-short {
+  font-size: 11px;
+  color: rgba(255,255,255,0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  font-weight: 700;
+}
+.quick-card-full {
+  font-size: 18px;
+  line-height: 1.05;
+  font-weight: 800;
+  margin-top: 6px;
+}
+.quick-amount-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quick-ccy {
+  width: 100%;
+  background: #252525;
+  border: 1px solid #303030;
+  color: #fff;
+  border-radius: 14px;
+  font-size: 16px;
+  padding: 14px 16px;
+  outline: none;
+}
+.quick-amt {
+  width: 100%;
+  background: #252525;
+  border: 1px solid #303030;
+  color: #fff;
+  border-radius: 18px;
+  font-size: 34px;
+  font-weight: 800;
+  padding: 18px 16px;
+  outline: none;
+  letter-spacing: -0.8px;
+}
+.quick-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.quick-choice {
+  width: 100%;
+  text-align: left;
+  background: #222;
+  color: #eee;
+  border: 1px solid #2f2f2f;
+  border-radius: 16px;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.quick-choice:active { background: #292929; }
+.quick-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.quick-tag {
+  border: 1px solid #323232;
+  border-radius: 999px;
+  background: #212121;
+  color: #ddd;
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.quick-tag:active { background: #292929; }
+.quick-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.quick-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  background: #202020;
+  border: 1px solid #2b2b2b;
+}
+.quick-summary-label {
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+}
+.quick-summary-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 15px;
+  color: #fff;
+  font-weight: 700;
+}
+.quick-edit {
+  border: none;
+  background: none;
+  color: #6bc5ff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.quick-actions {
+  padding-top: 10px;
+}
+.quick-primary {
+  width: 100%;
+  border: none;
+  background: #f0c040;
+  color: #111;
+  border-radius: 16px;
+  padding: 16px;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.quick-primary[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+.quick-secondary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+.quick-link {
+  border: none;
+  background: none;
+  color: #777;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+.quick-link.danger {
+  color: #9a6a6a;
+}
+.quick-empty {
+  padding: 20px 0 8px;
+  color: #777;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* ARCHIVE */
 #archive-view { display:none; padding-bottom:40px; }
 #archive-view.open { display:block; }
@@ -549,6 +775,21 @@ html, body {
   </div>
 </div>
 
+<!-- ══════════ QUICK ADD SHEET ══════════ -->
+<div class="sheet-overlay" id="quick-add-sheet" onclick="bgClose(event,'quick-add-sheet')">
+  <div class="sheet quick-sheet">
+    <div class="sheet-handle"></div>
+    <div class="quick-shell">
+      <div class="quick-head">
+        <div class="quick-kicker">Quick Add</div>
+        <div class="quick-step" id="quick-add-step">Step 1</div>
+      </div>
+      <div class="quick-body" id="quick-add-body"></div>
+      <div class="quick-actions" id="quick-add-actions"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ ACTION SHEET ══════════ -->
 <div class="sheet-overlay" id="action-sheet" onclick="bgClose(event,'action-sheet')">
   <div class="sheet">
@@ -650,6 +891,7 @@ html, body {
       <input type="hidden" id="nc-edit-id">
 
       <div class="sheet-row" style="padding:0 0 10px;border:none"><label>Short name</label><input class="sheet-input" id="nc-name" placeholder="e.g. CitiR" maxlength="10"></div>
+      <div class="sheet-row" style="padding:0 0 10px;border:none"><label>Full name</label><input class="sheet-input" id="nc-fullname" placeholder="e.g. Citibank Rewards"></div>
 
       <div style="font-size:9px;color:#444;padding:4px 0 6px;letter-spacing:0.5px;text-transform:uppercase;">SGD Rates</div>
       <div class="sheet-row" style="padding:0 0 10px;border:none"><label>Base pts/$1</label><input class="sheet-input" type="number" id="nc-base" placeholder="1" step="0.1"></div>
@@ -804,6 +1046,7 @@ let txns     = JSON.parse(localStorage.getItem('st_txns')    || '[]');
 let archived = JSON.parse(localStorage.getItem('st_archive') || '[]');
 let collapsed = { pending:false, upcoming:false, posted:false };
 let addBucket = 'pending';
+let quickAddState = null;
 
 // Cap panel month offset (0 = current, -1 = last month, etc.)
 let capMonthOffset = 0;
@@ -820,6 +1063,7 @@ let fxLastFetched = localStorage.getItem('st_fxlast') || null;
 const CCY_SYM  = { SGD:'$', MYR:'RM ', JPY:'¥', HKD:'HK$', MOP:'MOP$', THB:'฿', EUR:'€', USD:'US$' };
 const CCY_FLAG = { MYR:'🇲🇾', JPY:'🇯🇵', HKD:'🇭🇰', MOP:'🇲🇴', THB:'🇹🇭', EUR:'🇪🇺', USD:'🇺🇸', SGD:'🇸🇬' };
 const FCY_LIST = ['MYR','JPY','HKD','MOP','THB','EUR','USD'];
+const QUICK_ADD_TAGS = ['Food & Drinks', 'Groceries', 'Transport', 'Utilities', 'Shopping', 'Entertainment', 'Travel', 'Wellness', 'Others'];
 
 function nowIso() {
   return new Date().toISOString();
@@ -843,6 +1087,16 @@ function getRecordStamp(record) {
   const raw = record.updatedAt || record.archivedAt || record.receivedAt || record.createdAt || record.savedAt || 0;
   const ts = new Date(raw).getTime();
   return Number.isFinite(ts) ? ts : 0;
+}
+
+function getCardFullName(card) {
+  if (!card) return '?';
+  return card.fullName || card.name || '?';
+}
+
+function getQuickCardSubtitle(card) {
+  if (!card) return '';
+  return card.fullName && card.fullName !== card.name ? card.name : '';
 }
 
 function mergeById(existing, incoming) {
@@ -1960,6 +2214,25 @@ function clearDraft() {
   localStorage.removeItem(DRAFT_KEY);
 }
 
+function addTransaction(data) {
+  txns.push({
+    id:         makeId('txn_'),
+    bucket:     data.bucket,
+    cardId:     data.cardId,
+    amount:     data.amount,
+    currency:   data.currency || 'SGD',
+    chargeDate: data.bucket === 'upcoming' ? (data.chargeDate || null) : null,
+    status:     data.bucket === 'pending' ? (data.status || 'notpaid') : null,
+    category:   data.category || null,
+    tag:        data.tag || 'Others',
+    note:       data.note || '',
+    createdAt:  nowIso(),
+    updatedAt:  nowIso(),
+  });
+  save();
+  render();
+}
+
 function openAddSheet() {
   populateSelect('add-card');
   const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
@@ -2078,22 +2351,301 @@ function submitAdd() {
 
   const tag = document.getElementById('add-tag').value || 'Others';
 
-  txns.push({
-    id:         makeId('txn_'),
-    bucket:     addBucket,
+  addTransaction({
+    bucket: addBucket,
     cardId,
     amount,
-    currency:   ccy || 'SGD',
-    chargeDate: addBucket==='upcoming' ? (cdate||null) : null,
-    status:     addBucket==='pending' ? 'notpaid' : null,
+    currency: ccy || 'SGD',
+    chargeDate: cdate || null,
+    status: addBucket === 'pending' ? 'notpaid' : null,
     category,
     tag,
     note,
-    createdAt:  nowIso(),
-    updatedAt:  nowIso(),
   });
   clearDraft();
-  save(); render(); closeSheet('add-sheet');
+  closeSheet('add-sheet');
+}
+
+function launchQuickAddFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return ['1', 'true', 'yes'].includes((params.get('quick-add') || '').toLowerCase());
+}
+
+function clearQuickAddLaunchFlag() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('quick-add')) return;
+  url.searchParams.delete('quick-add');
+  const next = url.pathname + (url.search ? url.search : '') + url.hash;
+  window.history.replaceState({}, '', next);
+}
+
+function getQuickAddCard() {
+  return cards.find(c => c.id === (quickAddState && quickAddState.cardId));
+}
+
+function quickAddNeedsCategory(card) {
+  return !!(card && card.hasCategories && card.categories && card.categories.length);
+}
+
+function getQuickAddSteps() {
+  const card = getQuickAddCard();
+  const steps = ['card', 'amount'];
+  if (quickAddNeedsCategory(card)) steps.push('category');
+  steps.push('tag', 'confirm');
+  return steps;
+}
+
+function getQuickAddStepIndex(step) {
+  return Math.max(0, getQuickAddSteps().indexOf(step));
+}
+
+function openQuickAdd() {
+  quickAddState = {
+    step: 'card',
+    cardId: '',
+    currency: 'SGD',
+    amount: '',
+    category: '',
+    tag: 'Others',
+  };
+  renderQuickAdd();
+  openSheet('quick-add-sheet');
+}
+
+function closeQuickAdd() {
+  quickAddState = null;
+  closeSheet('quick-add-sheet');
+}
+
+function quickAddBack() {
+  if (!quickAddState) return;
+  const steps = getQuickAddSteps();
+  const idx = getQuickAddStepIndex(quickAddState.step);
+  if (idx <= 0) return;
+  quickAddState.step = steps[idx - 1];
+  renderQuickAdd();
+}
+
+function quickAddGoTo(step) {
+  if (!quickAddState) return;
+  quickAddState.step = step;
+  renderQuickAdd();
+}
+
+function quickAddSelectCard(cardId) {
+  if (!quickAddState) return;
+  quickAddState.cardId = cardId;
+  quickAddState.category = '';
+  renderQuickAdd();
+  setTimeout(() => {
+    if (!quickAddState || quickAddState.cardId !== cardId) return;
+    quickAddState.step = 'amount';
+    renderQuickAdd();
+  }, 120);
+}
+
+function quickAddSelectCategory(category) {
+  if (!quickAddState) return;
+  quickAddState.category = category;
+  renderQuickAdd();
+  setTimeout(() => {
+    if (!quickAddState || quickAddState.category !== category) return;
+    quickAddState.step = 'tag';
+    renderQuickAdd();
+  }, 120);
+}
+
+function quickAddSelectTag(tag) {
+  if (!quickAddState) return;
+  quickAddState.tag = tag;
+  renderQuickAdd();
+  setTimeout(() => {
+    if (!quickAddState || quickAddState.tag !== tag) return;
+    quickAddState.step = 'confirm';
+    renderQuickAdd();
+  }, 120);
+}
+
+function updateQuickAddCurrency(value) {
+  if (!quickAddState) return;
+  quickAddState.currency = value || 'SGD';
+}
+
+function updateQuickAddAmount(value) {
+  if (!quickAddState) return;
+  quickAddState.amount = value;
+}
+
+function quickAddAmountNext() {
+  if (!quickAddState) return;
+  const amount = parseFloat(quickAddState.amount);
+  if (!amount || amount <= 0) return;
+  const card = getQuickAddCard();
+  quickAddState.step = quickAddNeedsCategory(card) ? 'category' : 'tag';
+  renderQuickAdd();
+}
+
+function submitQuickAdd() {
+  if (!quickAddState) return;
+  const card = getQuickAddCard();
+  const amount = parseFloat(quickAddState.amount);
+  if (!card) { quickAddGoTo('card'); return; }
+  if (!amount || amount <= 0) { quickAddGoTo('amount'); return; }
+  if (quickAddNeedsCategory(card) && !quickAddState.category) { quickAddGoTo('category'); return; }
+
+  addTransaction({
+    bucket: 'pending',
+    cardId: card.id,
+    amount,
+    currency: quickAddState.currency || 'SGD',
+    status: 'notpaid',
+    category: quickAddNeedsCategory(card) ? quickAddState.category : null,
+    tag: quickAddState.tag || 'Others',
+    note: '',
+  });
+
+  closeQuickAdd();
+}
+
+function renderQuickAddActions(step, hasCards) {
+  const el = document.getElementById('quick-add-actions');
+  if (!el) return;
+  if (!hasCards) {
+    el.innerHTML = `<button class="quick-primary" onclick="closeQuickAdd()">Close</button>`;
+    return;
+  }
+  if (step === 'amount') {
+    const amount = parseFloat(quickAddState.amount);
+    el.innerHTML = `
+      <button class="quick-primary" onclick="quickAddAmountNext()" ${(!amount || amount <= 0) ? 'disabled' : ''}>Next</button>
+      <div class="quick-secondary-row">
+        <button class="quick-link" onclick="quickAddBack()">Back</button>
+        <button class="quick-link danger" onclick="closeQuickAdd()">Cancel</button>
+      </div>
+    `;
+    return;
+  }
+  if (step === 'confirm') {
+    el.innerHTML = `
+      <button class="quick-primary" onclick="submitQuickAdd()">Confirm</button>
+      <div class="quick-secondary-row">
+        <button class="quick-link" onclick="quickAddBack()">Back</button>
+        <button class="quick-link danger" onclick="closeQuickAdd()">Cancel</button>
+      </div>
+    `;
+    return;
+  }
+  el.innerHTML = `
+    <div class="quick-secondary-row">
+      <button class="quick-link" onclick="quickAddBack()" ${getQuickAddStepIndex(step) === 0 ? 'style="visibility:hidden"' : ''}>Back</button>
+      <button class="quick-link danger" onclick="closeQuickAdd()">Cancel</button>
+    </div>
+  `;
+}
+
+function renderQuickAdd() {
+  const body = document.getElementById('quick-add-body');
+  const stepEl = document.getElementById('quick-add-step');
+  if (!body || !stepEl || !quickAddState) return;
+
+  if (!cards.length) {
+    stepEl.textContent = 'No cards';
+    body.innerHTML = `<div class="quick-empty">No cards available yet.<br>Add a card from Settings first.</div>`;
+    renderQuickAddActions('empty', false);
+    return;
+  }
+
+  const card = getQuickAddCard();
+  const steps = getQuickAddSteps();
+  const step = quickAddState.step;
+  const stepPos = getQuickAddStepIndex(step) + 1;
+  stepEl.textContent = `${stepPos} of ${steps.length}`;
+
+  if (step === 'card') {
+    body.innerHTML = `
+      <div class="quick-question">Card used?</div>
+      <div class="quick-subtext">Quick Add always saves into Pending.</div>
+      <div class="quick-grid">
+        ${cards.map(c => `
+          <button type="button" class="quick-card ${quickAddState.cardId === c.id ? 'selected' : ''}"
+            style="background:linear-gradient(160deg, ${c.color || '#666'} 0%, #151515 100%);"
+            onclick="quickAddSelectCard('${c.id}')">
+            <span class="quick-card-short">${getQuickCardSubtitle(c) || '&nbsp;'}</span>
+            <span class="quick-card-full">${getCardFullName(c)}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+  } else if (step === 'amount') {
+    body.innerHTML = `
+      <div class="quick-question">Currency and amount</div>
+      <div class="quick-subtext">${card ? getCardFullName(card) : ''}</div>
+      <div class="quick-amount-wrap">
+        <select class="quick-ccy" id="quick-add-ccy" onchange="updateQuickAddCurrency(this.value)">
+          ${Object.keys(CCY_SYM).map(ccy => `<option value="${ccy}" ${quickAddState.currency === ccy ? 'selected' : ''}>${ccy}</option>`).join('')}
+        </select>
+        <input class="quick-amt" id="quick-add-amt" type="number" inputmode="decimal" placeholder="0.00" step="0.01"
+          value="${quickAddState.amount || ''}" oninput="updateQuickAddAmount(this.value)">
+      </div>
+    `;
+    setTimeout(() => {
+      const input = document.getElementById('quick-add-amt');
+      if (input) input.focus();
+    }, 0);
+  } else if (step === 'category') {
+    body.innerHTML = `
+      <div class="quick-question">Category</div>
+      <div class="quick-subtext">${card ? getCardFullName(card) : ''}</div>
+      <div class="quick-choice-list">
+        ${(card.categories || []).map(cat => `
+          <button type="button" class="quick-choice" onclick="quickAddSelectCategory(decodeURIComponent('${encodeURIComponent(cat)}'))">${cat}</button>
+        `).join('')}
+      </div>
+    `;
+  } else if (step === 'tag') {
+    body.innerHTML = `
+      <div class="quick-question">Tag</div>
+      <div class="quick-tags">
+        ${QUICK_ADD_TAGS.map(tag => `
+          <button type="button" class="quick-tag" onclick="quickAddSelectTag(decodeURIComponent('${encodeURIComponent(tag)}'))">${tag}</button>
+        `).join('')}
+      </div>
+    `;
+  } else if (step === 'confirm') {
+    body.innerHTML = `
+      <div class="quick-question">Confirm?</div>
+      <div class="quick-summary">
+        <div class="quick-summary-row">
+          <div class="quick-summary-label">Card</div>
+          <div class="quick-summary-value">${card ? getCardFullName(card) : ''}</div>
+          <button type="button" class="quick-edit" onclick="quickAddGoTo('card')">Edit</button>
+        </div>
+        <div class="quick-summary-row">
+          <div class="quick-summary-label">Amount</div>
+          <div class="quick-summary-value">${fmtAmt(parseFloat(quickAddState.amount) || 0, quickAddState.currency || 'SGD')}</div>
+          <button type="button" class="quick-edit" onclick="quickAddGoTo('amount')">Edit</button>
+        </div>
+        ${quickAddNeedsCategory(card) ? `
+        <div class="quick-summary-row">
+          <div class="quick-summary-label">Category</div>
+          <div class="quick-summary-value">${quickAddState.category || '-'}</div>
+          <button type="button" class="quick-edit" onclick="quickAddGoTo('category')">Edit</button>
+        </div>` : ''}
+        <div class="quick-summary-row">
+          <div class="quick-summary-label">Tag</div>
+          <div class="quick-summary-value">${quickAddState.tag || 'Others'}</div>
+          <button type="button" class="quick-edit" onclick="quickAddGoTo('tag')">Edit</button>
+        </div>
+        <div class="quick-summary-row">
+          <div class="quick-summary-label">Bucket</div>
+          <div class="quick-summary-value">Pending</div>
+          <span style="width:34px"></span>
+        </div>
+      </div>
+    `;
+  }
+
+  renderQuickAddActions(step, true);
 }
 
 // ══ STATUS CYCLE ══
@@ -2591,6 +3143,7 @@ const CARD_PRESETS = [
   {
     id: 'preset-revo',
     name: 'Revo',
+    fullName: 'UOB EVOL',
     // Base: 1pt/$1 ceil. Bonus: 9pts/$1 floor. $1.50 → 2 base + 9 bonus = 11pts
     baseRate: 1,    bonusRate: 9,
     fcyBase:  1,    fcyBonus:  9,    // FCY same as local
@@ -2603,6 +3156,7 @@ const CARD_PRESETS = [
   {
     id: 'preset-alt',
     name: 'Alt',
+    fullName: 'DBS Altitude',
     // 1.3 miles/$1 local → 0.65pts/$1, floor. $2 → floor(1.3) = 1pt
     baseRate: 0.65, bonusRate: 0,
     // FCY: 2.2 miles/$1 → 1.1pts/$1, floor. $10 → floor(11) = 11pts
@@ -2616,6 +3170,7 @@ const CARD_PRESETS = [
   {
     id: 'preset-pm',
     name: 'PM',
+    fullName: 'DBS Woman\'s World Card',
     // 1.2 miles/$1 local → 1.2pts/$1, floor. $1 → floor(1.2) = 1pt
     baseRate: 1.2,  bonusRate: 0,
     // FCY: 2.2 miles/$1 → 2pts/$1 after floor
@@ -2629,6 +3184,7 @@ const CARD_PRESETS = [
   {
     id: 'preset-citiR',
     name: 'CitiR',
+    fullName: 'Citibank Rewards',
     // Base: 1pt/$1 floor. Bonus: 9pts/$1 floor. $1.50 → 1 base + 9 bonus = 10pts
     baseRate: 1,    bonusRate: 9,
     fcyBase:  1,    fcyBonus:  9,    // FCY same as local
@@ -2641,6 +3197,7 @@ const CARD_PRESETS = [
   {
     id: 'preset-ladys',
     name: "Lady's",
+    fullName: 'UOB Lady\'s Card',
     // Block-based: every $5 = 1 base pt + 9 bonus pts = 10 pts total
     // $4.99 = 0pts, $5 = 10pts, $9.99 = 10pts, $10 = 20pts
     // Cap: $1000/mth on bonus only → max 200 blocks × 9 = 1800 bonus pts
@@ -2657,6 +3214,7 @@ const CARD_PRESETS = [
   {
     id: 'preset-pref',
     name: 'Pref',
+    fullName: 'UOB Preferred Platinum Visa',
     // Block-based: every $5 = 1 base + 9 bonus = 10 pts. FCY same as local.
     // $5.99 → 1 block → 10 pts. $12.99 → 2 blocks → 20 pts.
     // TWO independent $600/mth bonus caps by category:
@@ -2677,6 +3235,7 @@ const CARD_PRESETS = [
   {
     id: 'preset-sig',
     name: 'Sig',
+    fullName: 'UOB Visa Signature',
     // Block-based: $5 block = 1 base pt. Bonus ONLY if min $1000 spend/category/month.
     // Bonus rate unknown per-transaction — awarded at statement end by bank.
     // Display: base pts only. Bonus shown as — until manually verified.
@@ -2749,11 +3308,15 @@ function renderCardList() {
   cards.forEach(c => {
     const capInfo = c.capSpend > 0 ? ` · cap $${Number(c.capSpend).toLocaleString()}/mth` : '';
     const fcyInfo = (c.fcyBase > 0 && c.fcyBase !== c.baseRate) ? ` · FCY ${c.fcyBase}+${c.fcyBonus||0}pts` : '';
+    const fullInfo = c.fullName && c.fullName !== c.name
+      ? `<div style="font-size:10px;color:#777;margin-top:2px">${c.fullName}</div>`
+      : '';
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #1e1e1e;';
     row.innerHTML = `
       <div style="flex:1;min-width:0;cursor:pointer;" onclick="editCard('${c.id}')">
         <span style="font-size:13px;font-weight:700;color:${c.color}">${c.name}</span>
+        ${fullInfo}
         <span style="font-size:10px;color:#666;margin-left:6px">${c.baseRate}+${c.bonusRate}pts/$1${fcyInfo}${capInfo}</span>
         ${c.bonusDelayed ? '<span style="font-size:9px;color:#f0c04066;margin-left:6px">bonus delayed</span>' : ''}
       </div>
@@ -2771,6 +3334,7 @@ function editCard(id) {
   if (!c) return;
   document.getElementById('nc-edit-id').value      = id;
   document.getElementById('nc-name').value         = c.name;
+  document.getElementById('nc-fullname').value     = c.fullName || c.name || '';
   document.getElementById('nc-base').value         = c.baseRate;
   document.getElementById('nc-bonus').value        = c.bonusRate;
   document.getElementById('nc-fcy').value          = c.fcyBase  || 0;
@@ -2791,6 +3355,7 @@ function editCard(id) {
 function clearCardForm() {
   document.getElementById('nc-edit-id').value     = '';
   document.getElementById('nc-name').value        = '';
+  document.getElementById('nc-fullname').value    = '';
   document.getElementById('nc-base').value        = '';
   document.getElementById('nc-bonus').value       = '';
   document.getElementById('nc-fcy').value         = '';
@@ -2814,10 +3379,12 @@ function cancelCardEdit() {
 function saveCard() {
   const editId = document.getElementById('nc-edit-id').value;
   const name   = document.getElementById('nc-name').value.trim();
+  const fullName = document.getElementById('nc-fullname').value.trim() || name;
   if (!name) { alert('Enter a card name.'); return; }
 
   const cardData = {
     name,
+    fullName,
     baseRate:     parseFloat(document.getElementById('nc-base').value)  || 1,
     bonusRate:    parseFloat(document.getElementById('nc-bonus').value) || 0,
     fcyBase:      parseFloat(document.getElementById('nc-fcy').value)   || 0,
@@ -3226,7 +3793,13 @@ function updateBonusBadge() {
 
 // ══ SHEET HELPERS ══
 function openSheet(id)  { document.getElementById(id).classList.add('open'); }
-function closeSheet(id) { document.getElementById(id).classList.remove('open'); }
+function closeSheet(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'quick-add-sheet') {
+    quickAddState = null;
+    clearQuickAddLaunchFlag();
+  }
+}
 function bgClose(e,id)  { if (e.target===document.getElementById(id)) closeSheet(id); }
 
 // ══ BLOCK HORIZONTAL SWIPE ══
@@ -3359,7 +3932,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.9.2';
+const APP_VERSION = 'v2.10.0';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3580,6 +4153,7 @@ cards = cards.map(c => {
   const preset = CARD_PRESETS.find(p => p.id === c.id);
   if (preset) {
     return { ...preset, ...c,
+      fullName:         c.fullName || preset.fullName || c.name,
       baseRate:         preset.baseRate,
       bonusRate:        preset.bonusRate,
       bonusRateHidden:  preset.bonusRateHidden,
@@ -3599,6 +4173,7 @@ cards = cards.map(c => {
     };
   }
   // Non-preset cards: fill in any missing fields with safe defaults
+  if (!c.fullName) c.fullName = c.name;
   if (c.bonusDelayed === undefined) c.bonusDelayed = false;
   if (!c.baseRound)  c.baseRound  = 'round';
   if (!c.bonusRound) c.bonusRound = 'floor';
@@ -3629,6 +4204,7 @@ function runMigrations(skipSave) {
     if (preset) {
       changed = true;
       return { ...preset, ...c,
+        fullName: c.fullName || preset.fullName || c.name,
         baseRate: preset.baseRate, bonusRate: preset.bonusRate,
         bonusRateHidden: preset.bonusRateHidden, fcyBase: preset.fcyBase,
         fcyBonus: preset.fcyBonus, baseRound: preset.baseRound,
@@ -3639,6 +4215,7 @@ function runMigrations(skipSave) {
         categories: preset.categories, minSpendUnlock: preset.minSpendUnlock,
       };
     }
+    if (!c.fullName) { c.fullName = c.name; changed = true; }
     if (c.bonusDelayed === undefined) { c.bonusDelayed = false; changed = true; }
     if (!c.baseRound)  { c.baseRound  = 'round'; changed = true; }
     if (!c.bonusRound) { c.bonusRound = 'floor'; changed = true; }
@@ -3656,6 +4233,9 @@ function runMigrations(skipSave) {
 renderAppVersion();
 render();
 fetchFxRates(); // fetch live FX rates on load
+if (launchQuickAddFromUrl()) {
+  setTimeout(openQuickAdd, 50);
+}
 
 // ── Initial pull from Cloudflare on load (background, non-blocking) ──
 // Firebase auth listener handles sync on load — no manual init needed
