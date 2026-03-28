@@ -1052,8 +1052,8 @@ let quickAddState = null;
 let capMonthOffset = 0;
 // Pending bonus records for delayed-bonus cards
 let bonusDue = JSON.parse(localStorage.getItem('st_bonusdue') || '[]');
-// Selected card filter for cap panel (null = show all)
-let selectedCapCardId = null;
+// Selected card filter for cap panel ('__none__' = show nothing until selected)
+let selectedCapCardId = '__none__';
 let syncDeletes = JSON.parse(localStorage.getItem('st_sync_deletes') || '{"cards":[],"records":[],"bonusDue":[]}');
 
 // FX rates cache: { MYR: 0.30, JPY: 0.0089, ... } rates TO SGD
@@ -1644,7 +1644,7 @@ function renderCapPanel() {
     const chip = document.createElement('span');
     chip.className = 'legend-chip';
     // Selected: solid bg; unselected when another is selected: very dim
-    if (selectedCapCardId && !isSelected) {
+    if (selectedCapCardId !== '__none__' && !isSelected) {
       chip.style.background = '#1a1a1a';
       chip.style.color       = '#333';
       chip.style.border      = '1px solid #222';
@@ -1657,7 +1657,7 @@ function renderCapPanel() {
     chip.textContent = c.name;
     chip.title = `${c.baseRate}+${c.bonusRate}pts/$1${c.capSpend>0?' · cap $'+c.capSpend+'/mth':'∞'}`;
     chip.onclick = () => {
-      selectedCapCardId = (selectedCapCardId === c.id) ? null : c.id;
+      selectedCapCardId = (selectedCapCardId === c.id) ? '__none__' : c.id;
       renderCapPanel();
     };
     chipsEl.appendChild(chip);
@@ -1669,7 +1669,7 @@ function renderCapPanel() {
   chipsEl.appendChild(spacer);
 
   // ── Bar rows: show selected card only; empty by default until a chip is selected ──
-  const visibleCards = selectedCapCardId
+  const visibleCards = (selectedCapCardId && selectedCapCardId !== '__none__')
     ? cards.filter(c => c.id === selectedCapCardId)
     : [];
 
@@ -3944,7 +3944,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.10.1';
+const APP_VERSION = 'v2.10.2';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
