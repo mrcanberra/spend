@@ -2469,11 +2469,13 @@ function quickAddSelectTag(tag) {
 function updateQuickAddCurrency(value) {
   if (!quickAddState) return;
   quickAddState.currency = value || 'SGD';
+  if (quickAddState.step === 'amount') renderQuickAddActions('amount', cards.length > 0);
 }
 
 function updateQuickAddAmount(value) {
   if (!quickAddState) return;
   quickAddState.amount = value;
+  if (quickAddState.step === 'amount') renderQuickAddActions('amount', cards.length > 0);
 }
 
 function quickAddAmountNext() {
