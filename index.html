@@ -163,7 +163,7 @@ html, body {
 
 /* Amount */
 .txn-amt {
-  font-size: 15px; font-weight: 700; color: #ff6b6b;
+  font-size: 15px; font-weight: 700; color: #fff;
   flex: 1; letter-spacing: -0.3px; line-height: 1.2; min-width: 0;
 }
 .fcy-sub { font-size: 9px; font-weight: 600; color: #6bc5ff; display: block; letter-spacing: 0.5px; }
@@ -542,10 +542,13 @@ html, body {
 .bonus-received { opacity:0.4; }
 
 #main-view {
-  height: 100vh;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  width: 100%;
+  background: #111;
 }
 
 .main-scroll {
@@ -553,6 +556,7 @@ html, body {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   padding-bottom: 50px;
   background: #111;
 }
@@ -3944,7 +3948,7 @@ This will MERGE with your existing data (duplicates skipped by ID). Existing dat
 }
 
 // ══ FIREBASE SYNC — Firestore ══
-const APP_VERSION = 'v2.10.2';
+const APP_VERSION = 'v2.10.3';
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD9VIUHN5eOulG4F220Ojv5IR5JR0g9HY4",
@@ -3962,6 +3966,8 @@ try {
   firebase.initializeApp(firebaseConfig);
   fbAuth = firebase.auth();
   fbDb   = firebase.firestore();
+  fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .catch(e => console.warn('Auth persistence setup failed:', e.message));
 } catch(e) {
   console.warn('Firebase init failed:', e.message);
 }
@@ -4099,7 +4105,8 @@ function fbSignIn() {
   setFbStatus('Opening Google sign-in...', '#6bc5ff');
   // Always try popup first — works on Mac and mobile Safari browser
   // For standalone (home screen) web app, redirect is required
-  fbAuth.signInWithPopup(provider)
+  fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .then(() => fbAuth.signInWithPopup(provider))
     .then(() => setFbStatus('', ''))
     .catch(e => {
       // If popup blocked/failed, fall back to redirect
@@ -4108,12 +4115,13 @@ function fbSignIn() {
           e.code === 'auth/cancelled-popup-request' ||
           e.message.includes('Cross-Origin')) {
         setFbStatus('Trying redirect sign-in...', '#f0c040');
-        fbAuth.signInWithRedirect(provider)
+        fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+          .then(() => fbAuth.signInWithRedirect(provider))
           .catch(e2 => setFbStatus('Sign in failed: ' + e2.message, '#ff6b6b'));
       } else {
         setFbStatus('Sign in failed: ' + e.message, '#ff6b6b');
-    }
-  });
+      }
+    });
 }
 function fbSignOut() {
   fbStopListener();
